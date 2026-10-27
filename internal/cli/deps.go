@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 
+	"github.com/alfacentaur1/kubernetes-cluster-drainsim/internal/collector"
 	"github.com/alfacentaur1/kubernetes-cluster-drainsim/internal/snapshot"
 )
 
@@ -13,5 +14,5 @@ type Collector interface {
 
 // structure for dependencies
 type Deps struct {
-	NewCollector func(kubeconfig, kubeContext string) (Collector, error)
+	NewCollector func(opts collector.Options) (Collector, error)
 }
