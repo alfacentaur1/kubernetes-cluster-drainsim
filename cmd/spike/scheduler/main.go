@@ -62,6 +62,9 @@ func run(ctx context.Context) error {
 		return err
 	}
 
+	// TODO(engine): each pod is scheduled against the initial snapshot; a placed
+	// pod is not added to it, so later pods see the node's old free capacity.
+	// The drain simulation must add every placed pod to the state.
 	for _, p := range pending {
 		res, err := schedule(ctx, f, snap, p)
 		if err != nil {
@@ -143,6 +146,9 @@ func schedule(ctx context.Context, f framework.Framework, snap fwk.SharedLister,
 			res.rejected[name] = fwk.NewStatus(fwk.UnschedulableAndUnresolvable, "excluded by PreFilter result")
 			continue
 		}
+		// TODO(reporter): RunFilterPlugins stops at the first rejecting plugin, so
+		// only one reason per node is reported (e.g. a taint hides Insufficient cpu).
+		// Decide whether the report needs all reasons.
 		st := f.RunFilterPlugins(ctx, state, p, ni)
 		if st.IsSuccess() {
 			feasible = append(feasible, ni)

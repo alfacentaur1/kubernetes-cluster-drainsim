@@ -1,5 +1,3 @@
-// Package cli implements the command-line interface of drainsim.
-//
 // Each subcommand is a separate cobra.Command (Command pattern). Commands only
 // orchestrate the components behind the interfaces defined in this file and
 // contain no simulation logic themselves.
