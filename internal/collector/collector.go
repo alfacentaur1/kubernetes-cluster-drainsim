@@ -133,6 +133,7 @@ func (c *KubernetesCollector) Collect(ctx context.Context) (*snapshot.Snapshot, 
 		return nil, fmt.Errorf("listing jobs: %w", err)
 	}
 	snap.Jobs = jobs.Items
-
+	// Sanitize.
+	Sanitize(snap)
 	return snap, nil
 }
