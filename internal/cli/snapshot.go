@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/alfacentaur1/kubernetes-cluster-drainsim/internal/collector"
+	"github.com/alfacentaur1/kubernetes-cluster-drainsim/internal/snapshot"
 	"github.com/spf13/cobra"
 )
 
@@ -41,6 +42,10 @@ func runSnapshot(cmd *cobra.Command, deps Deps, opts *snapshotOptions) error {
 		Kubeconfig:  opts.kubeconfig,
 		KubeContext: opts.kubeContext,
 	})
+	snap := &snapshot.Snapshot{
+		FormatVersion:     snapshot.FormatVersion,
+
+	}
 	if err != nil {
 		return fmt.Errorf("creating collector: %w", err)
 	}
@@ -48,5 +53,7 @@ func runSnapshot(cmd *cobra.Command, deps Deps, opts *snapshotOptions) error {
 		return fmt.Errorf("collecting snapshot: %w", err)
 	}
 	fmt.Fprintf(cmd.OutOrStdout(), "snapshot collected, would be written to %s\n", opts.output)
+	fmt.Fprintf(cmd.OutOrStdout(), "collected %d nodes, %d pods, %d PDBs\n",
+		len(snap.Nodes), len(snap.Pods), len(snap.PDBs))
 	return nil
 }

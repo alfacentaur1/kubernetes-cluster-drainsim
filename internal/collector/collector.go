@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/alfacentaur1/kubernetes-cluster-drainsim/internal/snapshot"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
 )
@@ -66,5 +67,72 @@ func newWithClient(client kubernetes.Interface, opts Options) *KubernetesCollect
 // Collect returns a complete snapshot of the cluster, or an error if any
 // API request fails. It never returns a partial snapshot.
 func (c *KubernetesCollector) Collect(ctx context.Context) (*snapshot.Snapshot, error) {
-	return &snapshot.Snapshot{}, nil
+	version, err := c.client.Discovery().ServerVersion()
+	if err != nil {
+		return nil, fmt.Errorf("reading server version: %w", err)
+	}
+
+	snap := &snapshot.Snapshot{
+		FormatVersion:     snapshot.FormatVersion,
+		CreatedAt:         time.Now().UTC(),
+		KubernetesVersion: version.GitVersion,
+	}
+
+	// Cluster-scoped objects have no namespace (unique name across cluster).
+	nodes, err := c.client.CoreV1().Nodes().List(ctx, metav1.ListOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("listing nodes: %w", err)
+	}
+	snap.Nodes = nodes.Items
+
+	namespaces, err := c.client.CoreV1().Namespaces().List(ctx, metav1.ListOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("listing namespaces: %w", err)
+	}
+	snap.Namespaces = namespaces.Items
+
+	// Namespaced objects are read from all namespaces at once.
+	pods, err := c.client.CoreV1().Pods(metav1.NamespaceAll).List(ctx, metav1.ListOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("listing pods: %w", err)
+	}
+	snap.Pods = pods.Items
+
+	pdbs, err := c.client.PolicyV1().PodDisruptionBudgets(metav1.NamespaceAll).List(ctx, metav1.ListOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("listing pdbs: %w", err)
+	}
+	snap.PDBs = pdbs.Items
+
+	replicaSets, err := c.client.AppsV1().ReplicaSets(metav1.NamespaceAll).List(ctx, metav1.ListOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("listing replicasets: %w", err)
+	}
+	snap.ReplicaSets = replicaSets.Items
+
+	deployments, err := c.client.AppsV1().Deployments(metav1.NamespaceAll).List(ctx, metav1.ListOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("listing deployments: %w", err)
+	}
+	snap.Deployments = deployments.Items
+
+	statefulSets, err := c.client.AppsV1().StatefulSets(metav1.NamespaceAll).List(ctx, metav1.ListOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("listing statefulsets: %w", err)
+	}
+	snap.StatefulSets = statefulSets.Items
+
+	daemonSets, err := c.client.AppsV1().DaemonSets(metav1.NamespaceAll).List(ctx, metav1.ListOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("listing daemonsets: %w", err)
+	}
+	snap.DaemonSets = daemonSets.Items
+
+	jobs, err := c.client.BatchV1().Jobs(metav1.NamespaceAll).List(ctx, metav1.ListOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("listing jobs: %w", err)
+	}
+	snap.Jobs = jobs.Items
+
+	return snap, nil
 }
