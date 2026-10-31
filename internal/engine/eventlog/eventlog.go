@@ -1,5 +1,7 @@
 package eventlog
 
+import "slices"
+
 // Kind is the type of a simulation event.
 type Kind int
 
@@ -37,7 +39,11 @@ type Log struct {
 }
 
 // Notify appends the event to the log.
-func (l *Log) Notify(e Event)
+func (l *Log) Notify(e Event) {
+	l.events = append(l.events, e)
+}
 
 // Events returns the recorded events in order.
-func (l *Log) Events() []Event
+func (l *Log) Events() []Event {
+	return slices.Clone(l.events)
+}
