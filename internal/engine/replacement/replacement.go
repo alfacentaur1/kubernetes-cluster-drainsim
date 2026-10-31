@@ -19,6 +19,8 @@ type creator func(m *Model, pod *corev1.Pod) *corev1.Pod
 // creators maps an owner kind to its creator. Kinds that are not listed
 // get a pod with a new name, as a ReplicaSet or a Job would create.
 var creators = map[string]creator{
+	"ReplicaSet":  newName,
+	"Job":         newName,
 	"StatefulSet": sameName,
 }
 
