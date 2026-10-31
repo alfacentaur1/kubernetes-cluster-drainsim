@@ -31,3 +31,10 @@
 **Reason:** This matches what kube-scheduler itself reports in the `FailedScheduling` event.
 
 **Alternatives:** Run each Filter plugin separately per node to collect all reasons (e.g. a node that is both tainted and too small). To be revisited if the explanations in Q1 need it.
+## 2026-10-31 — Interface names without the "I" prefix
+
+**Decision:** Interfaces from the design (Chapter 5) use Go names without the "I" prefix: `ICollector` → `cli.Collector`, `ISimulation` → `engine.Simulation`, `IPlacement` → `Placement`, `IPolicyChecker` → `PolicyChecker`, `ICostModel` → `CostModel`. The GoDoc comment of each interface names the design interface it implements.
+
+**Reason:** The "I" prefix is not idiomatic in Go; interfaces are named after what they do, and the package name already gives context (`engine.Simulation`). The GoDoc reference keeps the code traceable to the design.
+
+**Alternatives:** Keep the exact design names (`ISimulation`), which match the thesis text but look foreign in Go code.

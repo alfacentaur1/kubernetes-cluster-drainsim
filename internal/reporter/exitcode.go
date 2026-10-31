@@ -1,6 +1,6 @@
 package reporter
 
-import "k8s.io/kubernetes/cmd/kubeadm/app/util/errors"
+import "errors"
 
 // Exit codes returned by drainsim.
 const (
