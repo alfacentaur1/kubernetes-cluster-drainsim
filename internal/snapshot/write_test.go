@@ -2,6 +2,7 @@ package snapshot
 
 import (
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -47,8 +48,8 @@ func TestWriteAndReadSnapshot(t *testing.T) {
 
 func TestWriteRejectsNilSnapshot(t *testing.T) {
 	err := Write(filepath.Join(t.TempDir(), "snapshot.json"), nil)
-	if err == nil {
-		t.Fatal("Write() expected error for nil snapshot")
+	if !errors.Is(err, ErrInvalidSnapshot) {
+		t.Fatalf("Write() error = %v, want ErrInvalidSnapshot", err)
 	}
 }
 
@@ -56,7 +57,7 @@ func TestWriteRejectsUnsupportedVersion(t *testing.T) {
 	s := &Snapshot{FormatVersion: "unknown/v99"}
 
 	err := Write(filepath.Join(t.TempDir(), "snapshot.json"), s)
-	if err == nil {
-		t.Fatal("Write() expected error for unsupported version")
+	if !errors.Is(err, ErrUnsupportedFormatVersion) {
+		t.Fatalf("Write() error = %v, want ErrUnsupportedFormatVersion", err)
 	}
 }

@@ -21,20 +21,15 @@ func Load(path string) (*snapshot.Snapshot, error) {
 	}
 
 	if snap.FormatVersion != snapshot.FormatVersion {
-		return nil, fmt.Errorf(
-			"unsupported snapshot format version %q",
-			snap.FormatVersion,
-		)
+		return nil, fmt.Errorf("%w %q", snapshot.ErrUnsupportedFormatVersion, snap.FormatVersion)
 	}
 
 	if snap.CreatedAt.IsZero() {
-		return nil, fmt.Errorf("invalid snapshot: createdAt is required")
+		return nil, fmt.Errorf("%w: createdAt is required", snapshot.ErrInvalidSnapshot)
 	}
 
 	if snap.KubernetesVersion == "" {
-		return nil, fmt.Errorf(
-			"invalid snapshot: kubernetesVersion is required",
-		)
+		return nil, fmt.Errorf("%w: kubernetesVersion is required", snapshot.ErrInvalidSnapshot)
 	}
 
 	return &snap, nil
