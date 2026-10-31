@@ -1,0 +1,67 @@
+# simulation of cluster RBAC e.g. Azure AKS
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: drainsim-collector
+  namespace: default
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: drainsim-collector-readonly
+rules:
+  # Kubernetes API server version discovery.
+  - nonResourceURLs:
+      - /version
+    verbs:
+      - get
+
+  # Core API resources.
+  - apiGroups: [""]
+    resources:
+      - nodes
+      - namespaces
+      - pods
+    verbs:
+      - get
+      - list
+
+  # Pod disruption budgets.
+  - apiGroups: ["policy"]
+    resources:
+      - poddisruptionbudgets
+    verbs:
+      - get
+      - list
+
+  # Workload controllers.
+  - apiGroups: ["apps"]
+    resources:
+      - replicasets
+      - deployments
+      - statefulsets
+      - daemonsets
+    verbs:
+      - get
+      - list
+
+  # Batch workloads.
+  - apiGroups: ["batch"]
+    resources:
+      - jobs
+    verbs:
+      - get
+      - list
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: drainsim-collector-readonly
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: drainsim-collector-readonly
+subjects:
+  - kind: ServiceAccount
+    name: drainsim-collector
+    namespace: default
