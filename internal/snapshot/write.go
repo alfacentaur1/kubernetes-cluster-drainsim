@@ -10,13 +10,10 @@ import (
 // The file is created with permissions 0600.
 func Write(path string, s *Snapshot) error {
 	if s == nil {
-		return fmt.Errorf("writing snapshot: nil snapshot")
+		return fmt.Errorf("%w: nil snapshot", ErrInvalidSnapshot)
 	}
 	if s.FormatVersion != FormatVersion {
-		return fmt.Errorf(
-			"writing snapshot: unsupported format version %q",
-			s.FormatVersion,
-		)
+		return fmt.Errorf("%w %q", ErrUnsupportedFormatVersion, s.FormatVersion)
 	}
 
 	data, err := json.MarshalIndent(s, "", "  ")

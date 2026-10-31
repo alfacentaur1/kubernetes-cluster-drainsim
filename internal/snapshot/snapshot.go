@@ -3,6 +3,7 @@
 package snapshot
 
 import (
+	"errors"
 	"time"
 
 	appsv1 "k8s.io/api/apps/v1"
@@ -14,6 +15,14 @@ import (
 // FormatVersion identifies the version of the snapshot format. The loader
 // rejects snapshots with an unknown version (FR4, NFR8).
 const FormatVersion = "drainsim.snapshot/v1"
+
+var (
+	// ErrUnsupportedFormatVersion is returned for a snapshot whose
+	// FormatVersion is not FormatVersion.
+	ErrUnsupportedFormatVersion = errors.New("unsupported snapshot format version")
+	// ErrInvalidSnapshot is returned for a snapshot that is missing required data.
+	ErrInvalidSnapshot = errors.New("invalid snapshot")
+)
 
 // Snapshot is a copy of the cluster objects that the simulation needs.
 // The objects are kept in the form returned by the Kubernetes API, so that
