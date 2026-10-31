@@ -3,11 +3,10 @@ package loader
 import (
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
-
-	"github.com/alfacentaur1/kubernetes-cluster-drainsim/internal/snapshot"
 )
 
 func TestLoadValidSnapshot(t *testing.T) {
@@ -16,8 +15,8 @@ func TestLoadValidSnapshot(t *testing.T) {
 		"formatVersion": "drainsim.snapshot/v1",
 		"createdAt": "2026-01-02T03:04:05Z",
 		"kubernetesVersion": "v1.33.1",
-		"nodes": [],
-		"pods": [],
+		"nodes": [{"metadata": {"name": "node-b"}}, {"metadata": {"name": "node-a"}}],
+		"pods": [{"metadata": {"namespace": "default", "name": "web"}, "spec": {"nodeName": "node-a"}}],
 		"namespaces": [],
 		"pdbs": [],
 		"replicaSets": [],
@@ -36,14 +35,17 @@ func TestLoadValidSnapshot(t *testing.T) {
 		t.Fatalf("Load() error = %v", err)
 	}
 
-	if got.FormatVersion != snapshot.FormatVersion {
-		t.Errorf("unexpected format version: %q", got.FormatVersion)
+	if got.KubernetesVersion() != "v1.33.1" {
+		t.Errorf("unexpected Kubernetes version: %q", got.KubernetesVersion())
 	}
-	if got.KubernetesVersion != "v1.33.1" {
-		t.Errorf("unexpected Kubernetes version: %q", got.KubernetesVersion)
+	if !got.CreatedAt().Equal(time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)) {
+		t.Errorf("unexpected creation time: %v", got.CreatedAt())
 	}
-	if !got.CreatedAt.Equal(time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)) {
-		t.Errorf("unexpected creation time: %v", got.CreatedAt)
+	if names := got.NodeNames(); !slices.Equal(names, []string{"node-a", "node-b"}) {
+		t.Errorf("unexpected nodes: %v", names)
+	}
+	if pods := got.PodsOnNode("node-a"); len(pods) != 1 || pods[0].Name != "web" {
+		t.Errorf("unexpected pods on node-a: %v", pods)
 	}
 }
 

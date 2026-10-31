@@ -25,7 +25,8 @@ type Decision struct {
 	Reason string
 }
 
-// Decide applies the kubectl drain rules to a pod. It follows the filters of kubectl drain
+// Decide applies the kubectl drain rules to a pod (component Eviction rules,
+// Section 5.3). It follows the filters of kubectl drain
 // (k8s.io/kubectl/pkg/drain/filters.go) in the same order, and the first
 // rule that matches decides. DaemonSet pods are skipped as with
 // --ignore-daemonsets; pods without a controller and pods with an emptyDir
