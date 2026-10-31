@@ -62,7 +62,7 @@ func (s *ClusterState) Node(name string) *corev1.Node {
 func (s *ClusterState) PodsOnNode(name string) []*corev1.Pod {
 	pods := []*corev1.Pod{}
 	for _, pod := range s.pods {
-		if pod.Name == name {
+		if pod.Spec.NodeName == name {
 			pods = append(pods, pod)
 		}
 	}
