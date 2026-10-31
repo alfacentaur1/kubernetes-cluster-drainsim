@@ -26,7 +26,9 @@ type Engine struct {
 }
 
 // New creates an engine over a loaded cluster state.
-func New(st *state.ClusterState, p Placement, observers ...eventlog.Observer) *Engine
+func New(st *state.ClusterState, p Placement, observers ...eventlog.Observer) *Engine {
+
+}
 
 // DrainResult is the outcome of draining one node.
 type DrainResult struct {
