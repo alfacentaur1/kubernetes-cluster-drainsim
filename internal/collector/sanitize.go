@@ -1,9 +1,6 @@
 package collector
 
 import (
-	"slices"
-	"strings"
-
 	"github.com/alfacentaur1/kubernetes-cluster-drainsim/internal/snapshot"
 	appsv1 "k8s.io/api/apps/v1"
 	batchv1 "k8s.io/api/batch/v1"
@@ -11,13 +8,10 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-var sensitiveKeywords = []string{
-	"PASSWORD", "PASSWD", "SECRET", "TOKEN", "API_KEY",
-	"APIKEY", "ACCESS_KEY", "PRIVATE_KEY", "CREDENTIAL",
-}
-
 // Sanitize removes managed fields, last-applied-configuration annotations and
-// sensitive literal env values from a snapshot, keeping data needed for drain simulation.
+// all literal env values from a snapshot, keeping data needed for drain
+// simulation (Section 5.2, NFR12). References to Secrets and ConfigMaps
+// (ValueFrom) are kept, because they contain only names.
 func Sanitize(s *snapshot.Snapshot) {
 	if s == nil {
 		return
@@ -35,7 +29,7 @@ func Sanitize(s *snapshot.Snapshot) {
 }
 
 // sanitizeAll cleans metadata of every item and, if podSpec is non-nil,
-// redacts sensitive env values in the pod spec it returns.
+// removes env values from the pod spec it returns.
 func sanitizeAll[T any, PT interface {
 	*T
 	metav1.Object
@@ -51,30 +45,22 @@ func sanitizeAll[T any, PT interface {
 	}
 }
 
+// redactPodSpec removes env values from all containers of the pod spec.
 func redactPodSpec(spec *corev1.PodSpec) {
-	for _, c := range spec.Containers {
-		redactEnv(c.Env)
+	for i := range spec.Containers {
+		redactEnv(spec.Containers[i].Env)
 	}
-	for _, c := range spec.InitContainers {
-		redactEnv(c.Env)
+	for i := range spec.InitContainers {
+		redactEnv(spec.InitContainers[i].Env)
 	}
-	for _, c := range spec.EphemeralContainers {
-		redactEnv(c.Env)
+	for i := range spec.EphemeralContainers {
+		redactEnv(spec.EphemeralContainers[i].Env)
 	}
 }
 
-// redactEnv modifies env in place; the slice shares its backing array with the container.
+// redactEnv clears the literal value of every env var. ValueFrom is kept.
 func redactEnv(env []corev1.EnvVar) {
 	for i := range env {
-		if env[i].Value != "" && isSensitiveName(env[i].Name) {
-			env[i].Value = "REDACTED"
-		}
+		env[i].Value = ""
 	}
-}
-
-func isSensitiveName(name string) bool {
-	name = strings.ToUpper(name)
-	return slices.ContainsFunc(sensitiveKeywords, func(k string) bool {
-		return strings.Contains(name, k)
-	})
 }

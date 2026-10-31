@@ -7,8 +7,10 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-// Model creates replacements for evicted pods (component Replacement model). It numbers the replacements it creates, so new names are
-// unique and the same simulation always produces the same names (NFR7).
+// Model creates replacements for evicted pods (component Replacement model,
+// Section 5.3, Factory Method pattern). It numbers the replacements it
+// creates, so new names are unique and the same simulation always produces
+// the same names (NFR7).
 type Model struct {
 	next int // number of the next replacement
 }
@@ -25,6 +27,8 @@ var creators = map[string]creator{
 	"StatefulSet": sameName,
 }
 
+// Replace returns the replacement of an evicted pod and true, or nil and
+// false if nothing would recreate the pod.
 func (m *Model) Replace(pod *corev1.Pod) (*corev1.Pod, bool) {
 	// A finished pod has done its work and is not recreated.
 	if pod.Status.Phase == corev1.PodSucceeded || pod.Status.Phase == corev1.PodFailed {

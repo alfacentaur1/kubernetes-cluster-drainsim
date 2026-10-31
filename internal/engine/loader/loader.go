@@ -5,11 +5,13 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/alfacentaur1/kubernetes-cluster-drainsim/internal/engine/state"
 	"github.com/alfacentaur1/kubernetes-cluster-drainsim/internal/snapshot"
 )
 
-// Load reads a snapshot from a JSON file and validates its format.
-func Load(path string) (*snapshot.Snapshot, error) {
+// Load reads a snapshot from a JSON file, validates its format and creates
+// the cluster state from it (component Snapshot loader, Section 5.3).
+func Load(path string) (*state.ClusterState, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("reading snapshot file %q: %w", path, err)
@@ -32,5 +34,5 @@ func Load(path string) (*snapshot.Snapshot, error) {
 		return nil, fmt.Errorf("%w: kubernetesVersion is required", snapshot.ErrInvalidSnapshot)
 	}
 
-	return &snap, nil
+	return state.New(&snap), nil
 }
