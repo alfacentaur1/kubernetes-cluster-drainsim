@@ -14,6 +14,15 @@ import (
 // can detect changes (Section 5.7).
 const FormatVersion = "drainsim.report/v1"
 
+// Search describes the search for another order after the given order
+// failed (UC3, UC5).
+type Search struct {
+	GivenFailed string `json:"givenOrderFailedAt"` // node where the given order failed
+	Strategy    string `json:"strategy,omitempty"` // "greedy" or "backtracking", empty if none ran
+	Attempts    int    `json:"attempts"`           // simulated drains of one node
+	Stopped     bool   `json:"stopped"`            // the limit of attempts was reached
+}
+
 // Report is the result of one command in the structure of Section 5.7: a
 // summary, the result of each simulated step and the cause of a failure.
 type Report struct {
@@ -26,6 +35,8 @@ type Report struct {
 	Steps         []Step   `json:"steps"`
 	Failure       *Failure `json:"failure,omitempty"`
 	Snapshot      Snapshot `json:"snapshot"`
+	Nodes         []string `json:"nodes"`            // nodes to drain, in the given order
+	Search        *Search  `json:"search,omitempty"` // present when the given order failed
 }
 
 // Snapshot describes the snapshot the simulation ran on, shown at the end of
@@ -78,31 +89,55 @@ type Failure struct {
 }
 
 // Drain builds the report of the drain command from the result of the drain
-// order search and the events of the simulation. now is the time of the
-// report; it is a parameter so the report stays deterministic in tests.
-func Drain(res drainorder.Result, events []eventlog.Event, now time.Time) Report {
+// order search. now is the current time, for the age of the snapshot.
+func Drain(res drainorder.Result, now time.Time) Report {
 	r := Report{
 		FormatVersion: FormatVersion,
 		Command:       "drain",
 		Passed:        res.Found,
+		Nodes:         res.Nodes,
 		Order:         res.Order,
 		Drained:       res.Drained,
-		Steps:         steps(events),
+		Steps:         steps(res.Events),
 		Snapshot:      snapshotInfo(res.Info, now),
 	}
-	if res.Found {
-		r.Summary = fmt.Sprintf("All %d nodes can be drained in this order: %s.",
-			len(res.Order), strings.Join(res.Order, ", "))
-		return r
+	if res.GivenFailed != "" {
+		r.Search = &Search{GivenFailed: res.GivenFailed, Strategy: res.Strategy,
+			Attempts: res.Attempts, Stopped: res.Stopped}
 	}
-
-	r.Failure = failure(r.Steps, res.Failed)
-	r.Summary = fmt.Sprintf("Node %s cannot be drained (step %d of %d).",
-		res.Failed, len(res.Drained)+1, len(res.Order))
-	if len(res.Drained) > 0 {
-		r.Summary += fmt.Sprintf(" These nodes can be drained before it: %s.", strings.Join(res.Drained, ", "))
+	r.Summary = summary(res)
+	if !res.Found && res.Failed != "" {
+		r.Failure = failure(r.Steps, res.Failed)
 	}
 	return r
+}
+
+// summary says in one or two sentences whether the nodes can be drained and
+// how the answer was found (Section 5.7).
+func summary(res drainorder.Result) string {
+	n := len(res.Nodes)
+	switch {
+	case res.Found && res.GivenFailed == "":
+		return fmt.Sprintf("All %d nodes can be drained in the given order: %s.",
+			n, strings.Join(res.Order, ", "))
+	case res.Found:
+		return fmt.Sprintf("The given order fails at node %s. The %s search found an order in which all %d nodes can be drained: %s.",
+			res.GivenFailed, res.Strategy, n, strings.Join(res.Order, ", "))
+	}
+
+	s := fmt.Sprintf("The nodes cannot be drained in the given order (it fails at node %s).", res.GivenFailed)
+	switch {
+	case res.Strategy == "":
+		// no search ran
+	case res.Stopped:
+		s += fmt.Sprintf(" The %s search stopped after %d attempts without finding an order.", res.Strategy, res.Attempts)
+	default:
+		s += fmt.Sprintf(" The %s search found no order either.", res.Strategy)
+	}
+	if len(res.Drained) > 0 {
+		s += fmt.Sprintf(" The longest sequence that can be drained is: %s.", strings.Join(res.Drained, ", "))
+	}
+	return s
 }
 
 // snapshotInfo describes the snapshot at the time now.

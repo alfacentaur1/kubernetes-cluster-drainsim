@@ -29,6 +29,16 @@ func Text(w io.Writer, r Report) error {
 	}
 	b.WriteString(r.Summary + "\n")
 
+	// How the order was found, if the given order failed and a strategy
+	// searched for another one (UC3, UC5).
+	if s := r.Search; s != nil && s.Strategy != "" {
+		fmt.Fprintf(&b, "Search: %s strategy, %d attempts", s.Strategy, s.Attempts)
+		if s.Stopped {
+			b.WriteString(", stopped at the limit")
+		}
+		b.WriteString("\n")
+	}
+
 	// Every simulated step.
 	for _, s := range r.Steps {
 		state := "drained"
