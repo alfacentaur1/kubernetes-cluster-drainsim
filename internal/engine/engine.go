@@ -36,6 +36,7 @@ type Simulation interface {
 	Drain(ctx context.Context, nodes []string) (Result, error)
 	Save() *Checkpoint
 	Restore(cp *Checkpoint)
+	Info() Info
 }
 
 // Result is the outcome of draining nodes in the given order. The drain stops
@@ -61,12 +62,13 @@ type Engine struct {
 	policy      PolicyChecker
 	replacement replacement.Model
 	observers   []eventlog.Observer
+	info        Info // describes the snapshot; computed once in New
 }
 
 // New creates an engine over a loaded cluster state. The policy checker is
 // required; psa.New(nil, "") checks against the levels set on the namespaces.
 func New(st *state.ClusterState, p Placement, policy PolicyChecker, observers ...eventlog.Observer) *Engine {
-	return &Engine{state: st, placement: p, policy: policy, observers: observers}
+	return &Engine{state: st, placement: p, policy: policy, observers: observers, info: newInfo(st)}
 }
 
 // SetPolicy sets the checker that replacements are checked against, for

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"strings"
+	"time"
 )
 
 // JSON writes the report as indented JSON (FR34). The field formatVersion
@@ -73,6 +74,9 @@ func Text(w io.Writer, r Report) error {
 		}
 	}
 
+	// Snapshot the simulation ran on.
+	writeSnapshot(&b, r.Snapshot)
+
 	_, err := io.WriteString(w, b.String())
 	return err
 }
@@ -89,6 +93,19 @@ func writeReplacement(b *strings.Builder, rp Replacement) {
 	case "lost":
 		fmt.Fprintf(b, "  lost     %s (replaces %s), rejected by Pod Security:\n", rp.Pod, rp.Evicted)
 		writeReasons(b, rp.Reason, "           ")
+	}
+}
+
+// writeSnapshot writes when the snapshot was taken and the pods for which the
+// result may differ from a real drain (Section 5.7).
+func writeSnapshot(b *strings.Builder, s Snapshot) {
+	fmt.Fprintf(b, "\nSnapshot taken %s (%s ago), Kubernetes %s\n",
+		s.CreatedAt.UTC().Format(time.RFC3339), s.Age, s.KubernetesVersion)
+	for _, w := range s.Warnings {
+		fmt.Fprintf(b, "  warning: %s: %s\n", w.Topic, w.Message)
+		for _, p := range w.Pods {
+			fmt.Fprintf(b, "    %s\n", p)
+		}
 	}
 }
 

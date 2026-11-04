@@ -18,6 +18,8 @@ type Result struct {
 	Drained []string
 	// Failed is the node whose drain failed, empty when Found.
 	Failed string
+	// Info describes the snapshot the drain was simulated on.
+	Info engine.Info
 }
 
 // Run checks whether the nodes can be drained in the given order (UC3).
@@ -33,5 +35,6 @@ func Run(ctx context.Context, sim engine.Simulation, order []string) (Result, er
 		Order:   order,
 		Drained: res.Drained,
 		Failed:  res.Failed,
+		Info:    sim.Info(),
 	}, nil
 }

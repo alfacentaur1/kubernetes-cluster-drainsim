@@ -3,8 +3,10 @@ package reporter
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/alfacentaur1/kubernetes-cluster-drainsim/internal/analyses/drainorder"
+	"github.com/alfacentaur1/kubernetes-cluster-drainsim/internal/engine"
 	"github.com/alfacentaur1/kubernetes-cluster-drainsim/internal/engine/eventlog"
 )
 
@@ -23,6 +25,17 @@ type Report struct {
 	Drained       []string `json:"drained"` // nodes that could be drained (Section 5.4)
 	Steps         []Step   `json:"steps"`
 	Failure       *Failure `json:"failure,omitempty"`
+	Snapshot      Snapshot `json:"snapshot"`
+}
+
+// Snapshot describes the snapshot the simulation ran on, shown at the end of
+// the report (Section 5.7), so the reader can judge how current the result is
+// and for which pods it may differ from a real drain.
+type Snapshot struct {
+	CreatedAt         time.Time        `json:"createdAt"`
+	Age               string           `json:"age"` // time between CreatedAt and the report, e.g. "26h3m0s"
+	KubernetesVersion string           `json:"kubernetesVersion"`
+	Warnings          []engine.Warning `json:"warnings,omitempty"`
 }
 
 // Step is the result of draining one node.
@@ -65,8 +78,9 @@ type Failure struct {
 }
 
 // Drain builds the report of the drain command from the result of the drain
-// order search and the events of the simulation.
-func Drain(res drainorder.Result, events []eventlog.Event) Report {
+// order search and the events of the simulation. now is the time of the
+// report; it is a parameter so the report stays deterministic in tests.
+func Drain(res drainorder.Result, events []eventlog.Event, now time.Time) Report {
 	r := Report{
 		FormatVersion: FormatVersion,
 		Command:       "drain",
@@ -74,6 +88,7 @@ func Drain(res drainorder.Result, events []eventlog.Event) Report {
 		Order:         res.Order,
 		Drained:       res.Drained,
 		Steps:         steps(events),
+		Snapshot:      snapshotInfo(res.Info, now),
 	}
 	if res.Found {
 		r.Summary = fmt.Sprintf("All %d nodes can be drained in this order: %s.",
@@ -88,6 +103,16 @@ func Drain(res drainorder.Result, events []eventlog.Event) Report {
 		r.Summary += fmt.Sprintf(" These nodes can be drained before it: %s.", strings.Join(res.Drained, ", "))
 	}
 	return r
+}
+
+// snapshotInfo describes the snapshot at the time now.
+func snapshotInfo(info engine.Info, now time.Time) Snapshot {
+	return Snapshot{
+		CreatedAt:         info.CreatedAt,
+		Age:               now.Sub(info.CreatedAt).Round(time.Second).String(),
+		KubernetesVersion: info.KubernetesVersion,
+		Warnings:          info.Warnings,
+	}
 }
 
 // steps groups the events by drained node, in the order of the drain.
