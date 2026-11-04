@@ -21,9 +21,10 @@ import (
 // can be saved and restored with Save and Restore (Memento pattern).
 // All returned lists are sorted, so the simulation is deterministic (NFR7).
 type ClusterState struct {
-	nodes map[string]*corev1.Node                  // by node name
-	pods  map[string]*corev1.Pod                   // by "namespace/name"
-	pdbs  map[string]*policyv1.PodDisruptionBudget // by "namespace/name"
+	nodes      map[string]*corev1.Node                  // by node name
+	pods       map[string]*corev1.Pod                   // by "namespace/name"
+	pdbs       map[string]*policyv1.PodDisruptionBudget // by "namespace/name"
+	namespaces map[string]*corev1.Namespace             // by name; they never change
 
 	// Taken from the snapshot. They never change, so they are not part of
 	// the Memento.
@@ -44,6 +45,7 @@ func New(snap *snapshot.Snapshot) *ClusterState {
 		nodes:             make(map[string]*corev1.Node, len(snap.Nodes)),
 		pods:              make(map[string]*corev1.Pod, len(snap.Pods)),
 		pdbs:              make(map[string]*policyv1.PodDisruptionBudget, len(snap.PDBs)),
+		namespaces:        make(map[string]*corev1.Namespace, len(snap.Namespaces)),
 		createdAt:         snap.CreatedAt,
 		kubernetesVersion: snap.KubernetesVersion,
 	}
@@ -229,4 +231,10 @@ func (s *ClusterState) Requested(nodeName string) corev1.ResourceList {
 		}
 	}
 	return sum
+}
+
+// Namespace returns the namespace with the given name, or nil if there is
+// no such namespace.
+func (s *ClusterState) Namespace(name string) *corev1.Namespace {
+	return s.namespaces[name]
 }
