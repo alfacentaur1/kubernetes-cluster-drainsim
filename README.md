@@ -10,9 +10,9 @@ A read-only CLI tool that takes a snapshot of a Kubernetes cluster and, **before
 
 One simulation engine, three analyses.
 
-This is a bachelor's thesis project at FEL ČVUT (Czech Technical University in Prague, Faculty of Electrical Engineering). The full design is in [`docs/thesis.md`](docs/thesis.md) (chapter 4 Analysis, chapter 5 Design).
+This is a bachelor's thesis project at FEL ČVUT (Czech Technical University in Prague, Faculty of Electrical Engineering). The design is described in the bachelor's thesis (chapter 5); design decisions taken during the implementation are recorded in [`docs/decisions.md`](docs/decisions.md).
 
-> **Status:** early development — Step 0 (scheduler framework spike in `spike/scheduler/`). The commands below describe the planned interface.
+> **Status:** the `snapshot` command and the complete simulation engine (cluster state, eviction rules, PDB model, replacement model, PSA checker, scheduler adapter, event log) are implemented. The `drain`, `consolidate` and `policy` commands and the report are in progress; the usage below shows the planned interface.
 
 ## How it works
 
@@ -53,35 +53,30 @@ Exit codes: `0` success, `1` the analysed change would fail, `2` usage or input 
 A drain step cordons the node and handles each pod:
 
 - **Eviction rules** decide per pod: *evict*, *skip* (DaemonSet, mirror pod) or *refuse* (no controller, emptyDir).
-- For an evicted pod: **PDB check → replacement by owner kind → PSA check** (if target levels are set) **→ scheduler places it → state update**.
+- For an evicted pod: **PDB check → replacement by owner kind → PSA check** (against the enforce level of the namespace, or a target level when one is configured) **→ scheduler places it → state update**.
 - The PDB budget is restored only after the replacement is placed; a placed replacement is assumed Ready.
 - A replacement rejected by PSA is a lost replica; a replacement with no suitable node stays Pending.
 - Evictions that are not allowed yet are retried in the next round. A round without progress means the drain fails, and the cause comes from the event log.
 - A pod covered by more than one PDB is never evictable (the API server returns 500).
+- A drain fails while a refused pod is left on the node, as kubectl drain does without --force.
 
-## Project layout
+## Repository layout
 
-| Package | Responsibility |
+| Package | Component |
 |---|---|
-| `internal/cli` | Commands: `snapshot`, `drain`, `consolidate`, `policy` |
-| `internal/report` | Reporter: text, JSON, exit codes |
-| `internal/analysis/drainorder` | Q1: drain order search (greedy + backtracking) |
-| `internal/analysis/consolidation` | Q2: consolidation and right-sizing |
-| `internal/analysis/policyimpact` | Q3: two simulations, without and with target levels |
-| `internal/cost` | Cost and CO2 estimator |
-| `internal/engine` | Simulation engine facade |
-| `internal/engine/state` | Cluster state with save/restore |
+| `internal/cli` | Commands of the CLI (`snapshot`; `drain`, `consolidate`, `policy` planned) |
+| `internal/reporter` | Reporter: exit codes |
+| `internal/collector` | Collector: reads a live cluster into a snapshot |
+| `internal/snapshot` | Snapshot artifact, stored as versioned JSON |
+| `internal/engine` | Simulation engine (Facade) |
+| `internal/engine/loader` | Snapshot loader: reads a snapshot file into the cluster state |
+| `internal/engine/state` | Cluster state (Memento) |
 | `internal/engine/eviction` | Eviction rules (`kubectl drain` semantics) |
-| `internal/engine/pdb` | PDB model (budget, recovery, `unhealthyPodEvictionPolicy`, multiple PDBs) |
-| `internal/engine/replacement` | Replacement model by workload kind |
-| `internal/engine/scheduler` | Adapter over the kube-scheduler framework |
-| `internal/engine/psa` | Pod Security checker over `pod-security-admission` |
-| `internal/engine/events` | Event log, source of failure explanations |
-| `internal/snapshot` | Snapshot model, loader and collector (Kubernetes API, Prometheus) |
-| `internal/config` | Configuration: prices, CO2 coefficients, policy targets |
-| `test/testdata/` | Small snapshots for unit tests |
-| `test/scenarios/<id>/` | Reproducible test clusters (`kind.yaml`, `manifests/`, `expected.json`) |
-| `docs/` | Thesis text and decision log |
+| `internal/engine/pdb` | PDB model |
+| `internal/engine/replacement` | Replacement model |
+| `internal/engine/scheduler` | Scheduler adapter over the kube-scheduler framework |
+| `internal/engine/psa` | PSA checker over `pod-security-admission` (Adapter) |
+| `internal/engine/eventlog` | Event log (Observer) |
 
 ## Test scenarios
 

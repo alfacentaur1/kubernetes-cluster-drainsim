@@ -63,7 +63,7 @@ func TestSnapshotWritesFile(t *testing.T) {
 	if _, err := os.Stat(output); err != nil {
 		t.Errorf("snapshot file was not written: %v", err)
 	}
-	if want := "collected 2 nodes, 3 pods, 0 PDBs"; !strings.Contains(out, want) {
+	if want := "wrote " + output + ": 2 nodes, 3 pods, 0 PDBs"; !strings.Contains(out, want) {
 		t.Errorf("output = %q, want substring %q", out, want)
 	}
 }
