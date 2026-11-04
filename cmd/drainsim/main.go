@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"time"
 
 	"github.com/alfacentaur1/kubernetes-cluster-drainsim/internal/cli"
 	"github.com/alfacentaur1/kubernetes-cluster-drainsim/internal/collector"
@@ -27,6 +28,7 @@ func run() int {
 		NewCollector: func(opts collector.Options) (cli.Collector, error) {
 			return collector.New(opts)
 		},
+		Now: time.Now, // the real clock; tests use a fixed time
 	}
 
 	err := cli.NewRootCommand(deps).ExecuteContext(ctx)

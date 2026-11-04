@@ -15,6 +15,7 @@ import (
 	"github.com/alfacentaur1/kubernetes-cluster-drainsim/internal/engine/scheduler"
 	"github.com/alfacentaur1/kubernetes-cluster-drainsim/internal/engine/state"
 	corev1 "k8s.io/api/core/v1"
+	resourcehelper "k8s.io/component-helpers/resource"
 )
 
 // Placement finds a node for a pod (IPlacement, Adapter pattern, Section 5.3).
@@ -37,6 +38,19 @@ type Simulation interface {
 	Save() *Checkpoint
 	Restore(cp *Checkpoint)
 	Info() Info
+
+	// Attach adds an observer that receives the events of later drains
+	// (Observer pattern). The drain order search attaches the event log only
+	// to the final order, so failed attempts do not appear in the report.
+	Attach(o eventlog.Observer)
+	// Detach removes an observer added by Attach.
+	Detach(o eventlog.Observer)
+
+	// MoveRequests returns the total requests of the pods that a drain of
+	// the node would move in the current state: pods the eviction rules
+	// evict and that are still running. The greedy and backtracking
+	// strategies try the nodes with the smallest requests first (Section 5.4).
+	MoveRequests(node string) corev1.ResourceList
 }
 
 // Result is the outcome of draining nodes in the given order. The drain stops
@@ -258,4 +272,37 @@ func rejections(r map[string]scheduler.Rejection) string {
 		parts = append(parts, fmt.Sprintf("%s: %s (%s)", name, r[name].Plugin, r[name].Reason))
 	}
 	return strings.Join(parts, "; ")
+}
+
+// Attach adds an observer that receives the events of later drains.
+func (e *Engine) Attach(o eventlog.Observer) {
+	e.observers = append(e.observers, o)
+}
+
+// Detach removes an observer added by Attach.
+func (e *Engine) Detach(o eventlog.Observer) {
+	e.observers = slices.DeleteFunc(e.observers, func(x eventlog.Observer) bool { return x == o })
+}
+
+// MoveRequests returns the total requests(cpu, memory) of the pods that a drain of the
+// node would move. Skipped and refused pods stay on the node, and finished
+// pods reserve nothing, so they are not counted.
+func (e *Engine) MoveRequests(node string) corev1.ResourceList {
+	sum := corev1.ResourceList{}
+	// For every pod on node.
+	for _, p := range e.state.PodsOnNode(node) {
+		if p.Status.Phase == corev1.PodSucceeded || p.Status.Phase == corev1.PodFailed {
+			continue // Skip or refuse.
+		}
+		if eviction.Decide(p).Action != eviction.Evict {
+			continue
+		}
+		// Requests of 1 pod, counted similar as in scheduler.
+		for name, v := range resourcehelper.PodRequests(p, resourcehelper.PodResourcesOptions{}) {
+			q := sum[name]
+			q.Add(v)
+			sum[name] = q
+		}
+	}
+	return sum
 }
