@@ -88,3 +88,50 @@ budget whose status lags behind its spec is not expected.
 
 **Alternatives:** Computing the status from the spec and the replica counts,
 as the disruption controller does.
+
+## 2026-11-04 — PSA checker uses the Pod Security Admission library
+
+**Decision:** The PSA checker evaluates pods with `k8s.io/pod-security-admission`
+(`policy.DefaultChecks`, `api.PolicyToEvaluate`). Only the enforce mode is
+evaluated. A namespace without a label is checked against `privileged:latest`,
+and an invalid label falls back to `restricted:latest`, as in the API server.
+A target level from the configuration replaces the level of the namespace;
+a per-namespace target comes before a cluster-wide one (FR29). Exemptions from
+the admission configuration of the API server are not modelled.
+
+**Reason:** The library is the code that runs inside the API server, so the
+result matches a real admission check (S1, NFR5). Audit and warn never reject
+a pod (Section 2.9). Exemptions are not part of the snapshot, and the default
+admission configuration has none.
+
+**Alternatives:** Re-implementing the Pod Security Standards (error-prone and
+would drift from upstream); reading the admission configuration from the
+control plane (not available through the API).
+
+## 2026-11-04 — Refused pods fail the drain
+
+**Decision:** The engine reports the drain of a node as failed if any pod on it
+was refused by the eviction rules, even when all other pods were evicted. This
+adds a branch to Figure 5.4 before "Node drained".
+
+**Reason:** kubectl drain without --force and --delete-emptydir-data stops at
+pods without a controller and pods with an emptyDir volume (Section 2.7, P9).
+Without this rule the simulation would report a drain as successful that fails
+in reality.
+
+**Alternatives:** Report refused pods only as warnings (contradicts kubectl
+drain).
+
+## 2026-11-04 — Checkpoint includes the replacement counter
+
+**Decision:** `engine.Checkpoint` stores, besides the Memento of the cluster
+state, the counter the replacement model uses to name replacements.
+`Restore` sets it back as well.
+
+**Reason:** The policy impact analysis runs the same drain twice from the same
+saved state and compares the runs step by step (Section 5.6). Without the
+counter, the second run would give replacements other names and the steps
+could not be matched. It also keeps repeated simulations deterministic (NFR7).
+
+**Alternatives:** Deriving replacement names from the evicted pod only (names
+could collide when the same pod is replaced twice).

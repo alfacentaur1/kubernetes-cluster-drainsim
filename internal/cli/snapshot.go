@@ -56,7 +56,7 @@ func runSnapshot(cmd *cobra.Command, deps Deps, opts *snapshotOptions) error {
 		return err
 	}
 
-	fmt.Fprintf(cmd.OutOrStdout(), "collected %d nodes, %d pods, %d PDBs\n",
-		len(snap.Nodes), len(snap.Pods), len(snap.PDBs))
+	fmt.Fprintf(cmd.OutOrStdout(), "wrote %s: %d nodes, %d pods, %d PDBs\n",
+		opts.output, len(snap.Nodes), len(snap.Pods), len(snap.PDBs))
 	return nil
 }
