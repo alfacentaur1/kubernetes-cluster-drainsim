@@ -5,6 +5,7 @@ package cli
 
 import (
 	"context"
+	"time"
 
 	"github.com/alfacentaur1/kubernetes-cluster-drainsim/internal/collector"
 	"github.com/alfacentaur1/kubernetes-cluster-drainsim/internal/snapshot"
@@ -23,4 +24,18 @@ type Collector interface {
 type Deps struct {
 	// NewCollector creates a collector for the given options.
 	NewCollector func(opts collector.Options) (Collector, error)
+
+	// Now returns the current time. The report uses it to compute the age
+	// of the snapshot. Tests set a fixed time, so the report is always the
+	// same; nil means the real clock (time.Now).
+	Now func() time.Time
+}
+
+// now returns the current time from Now, or from the real clock if Now is
+// not set.
+func (d Deps) now() time.Time {
+	if d.Now == nil {
+		return time.Now()
+	}
+	return d.Now()
 }
