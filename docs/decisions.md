@@ -71,3 +71,20 @@
 **Reason:** Creating the framework is expensive (all plugins are initialised), while rebuilding the snapshot costs O(p + m) per placement (p pods, m nodes), which is small for the cluster sizes in scope. The plugins always see the current state, including pods placed earlier in the drain.
 
 **Alternatives:** A new framework per placement (slow); updating the scheduler cache incrementally with AddPod/RemovePod (faster, but more code and easy to get out of sync with the cluster state).
+
+## 2026-11-04 — PDB model follows the Eviction API
+
+**Decision:** The PDB model re-implements the checks of the Eviction API
+(pkg/registry/core/pod/storage/eviction.go, Kubernetes 1.36) in the same
+order. The starting values of currentHealthy, desiredHealthy and
+disruptionsAllowed are taken from the PDB status in the snapshot. The check
+of observedGeneration is left out.
+
+**Reason:** The status was computed by the disruption controller of the real
+cluster, so the tool does not have to compute desiredHealthy from
+minAvailable, maxUnavailable and the scale of the owner again. The Eviction
+API itself cannot be called offline (NFR4). A snapshot is one moment, so a
+budget whose status lags behind its spec is not expected.
+
+**Alternatives:** Computing the status from the spec and the replica counts,
+as the disruption controller does.

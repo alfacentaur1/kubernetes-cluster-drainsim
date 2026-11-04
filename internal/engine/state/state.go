@@ -31,7 +31,8 @@ type ClusterState struct {
 	kubernetesVersion string
 }
 
-// objectkey returns the key of a pod in ClusterState.pods.
+// objectKey returns the "namespace/name" key used for pods and
+// PodDisruptionBudgets in ClusterState.
 func objectKey(namespace, name string) string {
 	return namespace + "/" + name
 }
@@ -63,6 +64,8 @@ func New(snap *snapshot.Snapshot) *ClusterState {
 // PDBsForPod returns the PodDisruptionBudgets whose selector matches the pod,
 // sorted by name. Only budgets in the pod's namespace are considered, as in
 // the API server. A budget with an invalid selector matches no pod.
+// The returned budgets are the ones stored in the state, not copies; the PDB
+// model changes their status during the simulation.
 func (s *ClusterState) PDBsForPod(pod *corev1.Pod) []*policyv1.PodDisruptionBudget {
 	result := []*policyv1.PodDisruptionBudget{}
 	for _, b := range s.pdbs {
