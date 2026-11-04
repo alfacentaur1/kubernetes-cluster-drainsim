@@ -135,3 +135,18 @@ could not be matched. It also keeps repeated simulations deterministic (NFR7).
 
 **Alternatives:** Deriving replacement names from the evicted pod only (names
 could collide when the same pod is replaced twice).
+
+## 2026-11-04 — Command line of the analysis commands
+
+**Decision:** The analysis commands take the snapshot file as a positional
+argument (`drainsim drain cluster.json`). The report format is chosen with
+`--format text|json` (default text). Nodes are selected with
+`--nodes a,b,c` (in the given order) or `--selector key=value` (sorted by
+name); without either, all nodes are used, sorted by name (FR5).
+
+**Reason:** A positional argument keeps the commands short and matches the
+README. `-o` already means the output file of `snapshot`, so using it for the
+format would give one flag two meanings (NFR17). Sorting by name keeps the
+result deterministic when no order is given (NFR7).
+
+**Alternatives:** `--snapshot` flag; `-o json` as in kubectl.
