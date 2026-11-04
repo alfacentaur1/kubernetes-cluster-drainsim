@@ -289,13 +289,15 @@ func (e *Engine) Detach(o eventlog.Observer) {
 // pods reserve nothing, so they are not counted.
 func (e *Engine) MoveRequests(node string) corev1.ResourceList {
 	sum := corev1.ResourceList{}
+	// For every pod on node.
 	for _, p := range e.state.PodsOnNode(node) {
 		if p.Status.Phase == corev1.PodSucceeded || p.Status.Phase == corev1.PodFailed {
-			continue
+			continue // Skip or refuse.
 		}
 		if eviction.Decide(p).Action != eviction.Evict {
 			continue
 		}
+		// Requests of 1 pod, counted similar as in scheduler.
 		for name, v := range resourcehelper.PodRequests(p, resourcehelper.PodResourcesOptions{}) {
 			q := sum[name]
 			q.Add(v)
