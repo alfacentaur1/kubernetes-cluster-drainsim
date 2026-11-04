@@ -9,6 +9,9 @@ import (
 
 	"github.com/alfacentaur1/kubernetes-cluster-drainsim/internal/snapshot"
 	corev1 "k8s.io/api/core/v1"
+	policyv1 "k8s.io/api/policy/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	resourcehelper "k8s.io/component-helpers/resource"
 )
 
@@ -18,8 +21,9 @@ import (
 // can be saved and restored with Save and Restore (Memento pattern).
 // All returned lists are sorted, so the simulation is deterministic (NFR7).
 type ClusterState struct {
-	nodes map[string]*corev1.Node // by node name
-	pods  map[string]*corev1.Pod  // by "namespace/name"
+	nodes map[string]*corev1.Node                  // by node name
+	pods  map[string]*corev1.Pod                   // by "namespace/name"
+	pdbs  map[string]*policyv1.PodDisruptionBudget // by "namespace/name"
 
 	// Taken from the snapshot. They never change, so they are not part of
 	// the Memento.
@@ -27,17 +31,19 @@ type ClusterState struct {
 	kubernetesVersion string
 }
 
-// podKey returns the key of a pod in ClusterState.pods.
-func podKey(namespace, name string) string {
+// objectKey returns the "namespace/name" key used for pods and
+// PodDisruptionBudgets in ClusterState.
+func objectKey(namespace, name string) string {
 	return namespace + "/" + name
 }
 
-// New builds the cluster state from a loaded snapshot. Nodes and pods are
+// New builds the cluster state from a loaded snapshot. Nodes, pdbs and pods are
 // deep-copied, so later changes to the state do not affect the snapshot.
 func New(snap *snapshot.Snapshot) *ClusterState {
 	s := &ClusterState{
 		nodes:             make(map[string]*corev1.Node, len(snap.Nodes)),
 		pods:              make(map[string]*corev1.Pod, len(snap.Pods)),
+		pdbs:              make(map[string]*policyv1.PodDisruptionBudget, len(snap.PDBs)),
 		createdAt:         snap.CreatedAt,
 		kubernetesVersion: snap.KubernetesVersion,
 	}
@@ -46,9 +52,38 @@ func New(snap *snapshot.Snapshot) *ClusterState {
 	}
 	for i := range snap.Pods {
 		p := &snap.Pods[i]
-		s.pods[podKey(p.Namespace, p.Name)] = p.DeepCopy()
+		s.pods[objectKey(p.Namespace, p.Name)] = p.DeepCopy()
+	}
+	for i := range snap.PDBs {
+		b := &snap.PDBs[i]
+		s.pdbs[objectKey(b.Namespace, b.Name)] = b.DeepCopy()
 	}
 	return s
+}
+
+// PDBsForPod returns the PodDisruptionBudgets whose selector matches the pod,
+// sorted by name. Only budgets in the pod's namespace are considered, as in
+// the API server. A budget with an invalid selector matches no pod.
+// The returned budgets are the ones stored in the state, not copies; the PDB
+// model changes their status during the simulation.
+func (s *ClusterState) PDBsForPod(pod *corev1.Pod) []*policyv1.PodDisruptionBudget {
+	result := []*policyv1.PodDisruptionBudget{}
+	for _, b := range s.pdbs {
+		if b.Namespace != pod.Namespace {
+			continue
+		}
+		selector, err := metav1.LabelSelectorAsSelector(b.Spec.Selector)
+		if err != nil {
+			continue
+		}
+		if selector.Matches(labels.Set(pod.Labels)) {
+			result = append(result, b)
+		}
+	}
+	slices.SortFunc(result, func(a, b *policyv1.PodDisruptionBudget) int {
+		return cmp.Compare(a.Name, b.Name)
+	})
+	return result
 }
 
 // CreatedAt returns the time when the snapshot was taken.
@@ -139,7 +174,7 @@ func (s *ClusterState) Cordon(name string) error {
 // RemovePod removes an evicted pod from the state.
 // It returns an error if the pod does not exist.
 func (s *ClusterState) RemovePod(namespace, name string) error {
-	key := podKey(namespace, name)
+	key := objectKey(namespace, name)
 	if _, ok := s.pods[key]; !ok {
 		return fmt.Errorf("pod %s/%s not found", namespace, name)
 	}
@@ -152,7 +187,7 @@ func (s *ClusterState) RemovePod(namespace, name string) error {
 // later with Bind. It returns an error if a pod with the same namespace and
 // name already exists.
 func (s *ClusterState) AddPod(pod *corev1.Pod) error {
-	key := podKey(pod.Namespace, pod.Name)
+	key := objectKey(pod.Namespace, pod.Name)
 	if _, ok := s.pods[key]; ok {
 		return fmt.Errorf("pod %s/%s already exists", pod.Namespace, pod.Name)
 	}
@@ -164,7 +199,7 @@ func (s *ClusterState) AddPod(pod *corev1.Pod) error {
 // scheduler's Bind step does. It returns an error if the pod or the node
 // does not exist.
 func (s *ClusterState) Bind(namespace, name, nodeName string) error {
-	pod, ok := s.pods[podKey(namespace, name)]
+	pod, ok := s.pods[objectKey(namespace, name)]
 	if !ok {
 		return fmt.Errorf("pod %s/%s not found", namespace, name)
 	}
