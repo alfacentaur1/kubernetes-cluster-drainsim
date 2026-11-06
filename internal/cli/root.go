@@ -12,5 +12,6 @@ func NewRootCommand(deps Deps) *cobra.Command {
 	}
 	root.AddCommand(newSnapshotCommand(deps)) // drainsim snapshot
 	root.AddCommand(newDrainCommand(deps))    // drainsim drain
+	root.AddCommand(newPolicyCommand(deps))   // drainsim policy
 	return root
 }
