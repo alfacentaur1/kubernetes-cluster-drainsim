@@ -1,6 +1,7 @@
 package engine
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"maps"
@@ -28,6 +29,17 @@ type Placement interface {
 // pattern, Section 5.3). It is implemented by psa.Checker.
 type PolicyChecker interface {
 	Check(pod *corev1.Pod, ns *corev1.Namespace) psa.Result
+}
+
+// Violation is a workload whose running pods violate a policy (FR30, S1).
+// Pods of one workload share their template, so they are reported together.
+type Violation struct {
+	Namespace string   `json:"namespace"`
+	Kind      string   `json:"kind"` // e.g. "Deployment", or "Pod" for a pod without a controller
+	Name      string   `json:"name"`
+	Pods      []string `json:"pods"`
+	Level     string   `json:"level"`    // level checked against, e.g. "restricted:latest"
+	Controls  string   `json:"controls"` // violated controls, from the first pod (S3)
 }
 
 // Simulation is the interface the analyses use (ISimulation, Section 5.3).
@@ -305,4 +317,39 @@ func (e *Engine) MoveRequests(node string) corev1.ResourceList {
 		}
 	}
 	return sum
+}
+
+// CheckRunning checks every running pod against the policy and groups the
+// violations by workload (Figure 5.6, steps 1 and 2; FR30). Running pods are
+// not rejected by a new level, but each of them would be on its next
+// restart (S1). The result is sorted by namespace, kind and name (NFR7).
+func (e *Engine) CheckRunning(p PolicyChecker) []Violation {
+	var out []Violation
+	at := map[string]int{} // namespace/kind/name -> index in out
+
+	for _, pod := range e.state.BoundPods() { // sorted by namespace and name
+		r := p.Check(pod, e.state.Namespace(pod.Namespace))
+		if r.Allowed {
+			continue
+		}
+		kind, name := e.state.Workload(pod)
+		k := pod.Namespace + "/" + kind + "/" + name
+		i, ok := at[k]
+		if !ok {
+			out = append(out, Violation{Namespace: pod.Namespace, Kind: kind, Name: name,
+				Level: r.Level, Controls: r.Violations})
+			i = len(out) - 1
+			at[k] = i
+		}
+		out[i].Pods = append(out[i].Pods, key(pod))
+	}
+
+	slices.SortFunc(out, func(a, b Violation) int {
+		return cmp.Or(
+			cmp.Compare(a.Namespace, b.Namespace),
+			cmp.Compare(a.Kind, b.Kind),
+			cmp.Compare(a.Name, b.Name),
+		)
+	})
+	return out
 }
