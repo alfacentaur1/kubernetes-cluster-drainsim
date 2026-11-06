@@ -150,3 +150,19 @@ format would give one flag two meanings (NFR17). Sorting by name keeps the
 result deterministic when no order is given (NFR7).
 
 **Alternatives:** `--snapshot` flag; `-o json` as in kubectl.
+
+## 2026-11-04 — Format of the configuration file
+
+**Decision:** The configuration is a YAML file passed with `--config`. The
+target Pod Security levels are under `policyTargets`: `cluster` for every
+namespace and `namespaces` for single namespaces, which take precedence
+(FR29). Unknown fields are rejected.
+
+**Reason:** YAML is the format Kubernetes operators use daily. The two keys
+map directly to the arguments of the PSA checker. Rejecting unknown fields
+prevents a typo from silently disabling the target levels, which would make
+the analysis report that the new policy has no effect.
+
+**Alternatives:** JSON (harder to write by hand); command-line flags such as
+`--target shop=restricted` (unwieldy for many namespaces and for the prices
+added later).
