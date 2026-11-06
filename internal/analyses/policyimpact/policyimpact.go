@@ -18,29 +18,31 @@ type Result struct {
 	// Impact is the step that succeeds without the target levels but fails
 	// with them, or nil if the target levels do not affect the drain.
 	Impact *Impact
+	// Lost are the replicas the target levels reject but the current levels
+	// do not (FR31). Each keeps its budget reduced (FR32), so it explains an
+	// Impact; without an Impact the application still loses the replica (S2).
+	Lost []LostReplica
 	// Running are the workloads whose running pods violate the target
 	// levels (FR30). They are not affected now, but on their next restart.
 	Running []engine.Violation
+	// Events are the decisions of the run with the target levels.
+	Events []eventlog.Event
 	// Info describes the snapshot (Section 5.7).
 	Info engine.Info
 }
 
-// Impact is a drain step that fails only because of the target levels.
+// Impact is the drain step that fails only because of the target levels.
 type Impact struct {
-	Step int    // number of the step, from 1
-	Node string // node whose drain fails
-	// Lost are the replicas rejected by the target levels, but not by the
-	// current levels, up to this step. A lost replica keeps its budget
-	// reduced (FR32), so it explains a failure in a later step.
-	Lost []LostReplica
+	Step int    `json:"step"` // number of the step, from 1
+	Node string `json:"node"` // node whose drain fails
 }
 
 // LostReplica is a replacement that the target levels reject (FR31).
 type LostReplica struct {
-	Step   int    // step in which the replacement was rejected
-	Node   string // node that was drained in that step
-	Pod    string // the rejected replacement
-	Reason string // level and violated controls (S3)
+	Step   int    `json:"step"`   // step in which the replacement was rejected
+	Node   string `json:"node"`   // node that was drained in that step
+	Pod    string `json:"pod"`    // the rejected replacement
+	Reason string `json:"reason"` // level and violated controls (S3)
 }
 
 // Run follows Algorithm 5.4. current checks pods against the levels set on
@@ -73,41 +75,32 @@ func Run(ctx context.Context, sim engine.Simulation, nodes []string, current, ta
 	if err != nil {
 		return Result{}, err
 	}
-	res.Before, res.After = before, after
+	res.Before, res.After, res.Events = before, after, afterEvents
+	res.Lost = lostOnlyAfter(nodes, beforeEvents, afterEvents)
 
 	// impact ← steps that succeed in before but fail in after. A drain
 	// stops at its first failed step, so there is at most one such step.
 	if after.Failed != "" && slices.Contains(before.Drained, after.Failed) {
-		step := slices.Index(nodes, after.Failed) + 1
-		res.Impact = &Impact{
-			Step: step,
-			Node: after.Failed,
-			Lost: lostOnlyAfter(nodes, beforeEvents, afterEvents, step),
-		}
+		res.Impact = &Impact{Step: slices.Index(nodes, after.Failed) + 1, Node: after.Failed}
 	}
 	return res, nil
 }
 
 // lostOnlyAfter returns the replicas lost in the run with the target levels
-// but not in the run without them, in steps up to and including step.
-func lostOnlyAfter(nodes []string, before, after []eventlog.Event, step int) []LostReplica {
+// but not in the run without them.
+func lostOnlyAfter(nodes []string, before, after []eventlog.Event) []LostReplica {
 	lostBefore := map[string]bool{}
 	for _, ev := range before {
 		if ev.Kind == eventlog.LostReplica {
 			lostBefore[ev.Node+"|"+ev.Pod] = true
 		}
 	}
-
 	var out []LostReplica
 	for _, ev := range after {
-		if ev.Kind != eventlog.LostReplica || lostBefore[ev.Node+"|"+ev.Pod] {
-			continue
+		if ev.Kind == eventlog.LostReplica && !lostBefore[ev.Node+"|"+ev.Pod] {
+			out = append(out, LostReplica{Step: slices.Index(nodes, ev.Node) + 1,
+				Node: ev.Node, Pod: ev.Pod, Reason: ev.Reason})
 		}
-		n := slices.Index(nodes, ev.Node) + 1
-		if n > step {
-			continue
-		}
-		out = append(out, LostReplica{Step: n, Node: ev.Node, Pod: ev.Pod, Reason: ev.Reason})
 	}
 	return out
 }
