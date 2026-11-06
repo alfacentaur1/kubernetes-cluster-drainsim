@@ -196,3 +196,5 @@ func describe(events []eventlog.Event) []string {
 	}
 	return out
 }
+
+func (f *fakeSim) CheckRunning(engine.PolicyChecker) []engine.Violation { return nil }

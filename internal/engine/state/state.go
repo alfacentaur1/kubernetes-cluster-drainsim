@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/alfacentaur1/kubernetes-cluster-drainsim/internal/snapshot"
+	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	policyv1 "k8s.io/api/policy/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -21,10 +22,11 @@ import (
 // can be saved and restored with Save and Restore (Memento pattern).
 // All returned lists are sorted, so the simulation is deterministic (NFR7).
 type ClusterState struct {
-	nodes      map[string]*corev1.Node                  // by node name
-	pods       map[string]*corev1.Pod                   // by "namespace/name"
-	pdbs       map[string]*policyv1.PodDisruptionBudget // by "namespace/name"
-	namespaces map[string]*corev1.Namespace             // by name; they never change
+	nodes       map[string]*corev1.Node                  // by node name
+	pods        map[string]*corev1.Pod                   // by "namespace/name"
+	pdbs        map[string]*policyv1.PodDisruptionBudget // by "namespace/name"
+	namespaces  map[string]*corev1.Namespace             // by name; they never change
+	replicaSets map[string]*appsv1.ReplicaSet            // by "namespace/name"; they never change
 
 	// Taken from the snapshot. They never change, so they are not part of
 	// the Memento.
@@ -46,6 +48,7 @@ func New(snap *snapshot.Snapshot) *ClusterState {
 		pods:              make(map[string]*corev1.Pod, len(snap.Pods)),
 		pdbs:              make(map[string]*policyv1.PodDisruptionBudget, len(snap.PDBs)),
 		namespaces:        make(map[string]*corev1.Namespace, len(snap.Namespaces)),
+		replicaSets:       make(map[string]*appsv1.ReplicaSet, len(snap.ReplicaSets)),
 		createdAt:         snap.CreatedAt,
 		kubernetesVersion: snap.KubernetesVersion,
 	}
@@ -59,6 +62,10 @@ func New(snap *snapshot.Snapshot) *ClusterState {
 	for i := range snap.PDBs {
 		b := &snap.PDBs[i]
 		s.pdbs[objectKey(b.Namespace, b.Name)] = b.DeepCopy()
+	}
+	for i := range snap.ReplicaSets {
+		rs := &snap.ReplicaSets[i]
+		s.replicaSets[objectKey(rs.Namespace, rs.Name)] = rs.DeepCopy()
 	}
 	return s
 }
@@ -237,4 +244,23 @@ func (s *ClusterState) Requested(nodeName string) corev1.ResourceList {
 // no such namespace.
 func (s *ClusterState) Namespace(name string) *corev1.Namespace {
 	return s.namespaces[name]
+}
+
+// Workload returns the kind and name of the workload a pod belongs to, as an
+// operator knows it (Figure 5.2): for a pod of a ReplicaSet owned by a
+// Deployment, the Deployment; otherwise the controller of the pod. A pod
+// without a controller is its own workload, of kind "Pod".
+func (s *ClusterState) Workload(pod *corev1.Pod) (kind, name string) {
+	owner := metav1.GetControllerOf(pod)
+	if owner == nil {
+		return "Pod", pod.Name
+	}
+	if owner.Kind == "ReplicaSet" {
+		if rs, ok := s.replicaSets[objectKey(pod.Namespace, owner.Name)]; ok {
+			if d := metav1.GetControllerOf(rs); d != nil {
+				return d.Kind, d.Name // usually a Deployment
+			}
+		}
+	}
+	return owner.Kind, owner.Name
 }
