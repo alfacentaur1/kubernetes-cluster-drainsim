@@ -17,10 +17,11 @@ const FormatVersion = "drainsim.report/v1"
 // Search describes the search for another order after the given order
 // failed (UC3, UC5).
 type Search struct {
-	GivenFailed string `json:"givenOrderFailedAt"` // node where the given order failed
-	Strategy    string `json:"strategy,omitempty"` // "greedy" or "backtracking", empty if none ran
-	Attempts    int    `json:"attempts"`           // simulated drains of one node
-	Stopped     bool   `json:"stopped"`            // the limit of attempts was reached
+	GivenFailed string        `json:"givenOrderFailedAt"` // node where the given order failed
+	Strategy    string        `json:"strategy,omitempty"` // "greedy" or "backtracking", empty if none ran
+	Attempts    int           `json:"attempts"`           // simulated drains of one node
+	Stopped     bool          `json:"stopped"`            // the limit of attempts was reached
+	Policy      *PolicyImpact `json:"policy,omitempty"`   // only in the report of the policy command
 }
 
 // Report is the result of one command in the structure of Section 5.7: a
