@@ -63,6 +63,10 @@ type Simulation interface {
 	// evict and that are still running. The greedy and backtracking
 	// strategies try the nodes with the smallest requests first (Section 5.4).
 	MoveRequests(node string) corev1.ResourceList
+
+	// CheckRunning checks every running pod against the policy and groups
+	// the violations by workload (FR30).
+	CheckRunning(p PolicyChecker) []Violation
 }
 
 // Result is the outcome of draining nodes in the given order. The drain stops
