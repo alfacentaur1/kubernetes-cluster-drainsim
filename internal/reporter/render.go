@@ -83,6 +83,10 @@ func Text(w io.Writer, r Report) error {
 			}
 		}
 	}
+	// Policy impact (Section 5.6): lost replicas and running pods.
+	if p := r.Policy; p != nil {
+		writePolicy(&b, p)
+	}
 
 	// Snapshot the simulation ran on.
 	writeSnapshot(&b, r.Snapshot)
@@ -125,6 +129,25 @@ func writeReasons(b *strings.Builder, reason, indent string) {
 	for _, part := range strings.Split(reason, "; ") {
 		if part != "" {
 			b.WriteString(indent + part + "\n")
+		}
+	}
+}
+
+// writePolicy writes the replicas lost because of the target levels, with
+// the violated controls (S3), and the running pods that violate them (S1).
+func writePolicy(b *strings.Builder, p *PolicyImpact) {
+	if len(p.Lost) > 0 {
+		b.WriteString("\nReplicas lost because of the target levels:\n")
+		for _, l := range p.Lost {
+			fmt.Fprintf(b, "  step %d, node %s: %s\n", l.Step, l.Node, l.Pod)
+			fmt.Fprintf(b, "    %s\n", l.Reason)
+		}
+	}
+	if len(p.Running) > 0 {
+		b.WriteString("\nRunning pods that violate the target levels (rejected on their next restart):\n")
+		for _, v := range p.Running {
+			fmt.Fprintf(b, "  %s/%s %s: %d pods, level %s\n", v.Namespace, v.Kind, v.Name, len(v.Pods), v.Level)
+			fmt.Fprintf(b, "    %s\n", v.Controls)
 		}
 	}
 }
