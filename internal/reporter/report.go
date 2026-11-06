@@ -27,17 +27,18 @@ type Search struct {
 // Report is the result of one command in the structure of Section 5.7: a
 // summary, the result of each simulated step and the cause of a failure.
 type Report struct {
-	FormatVersion string   `json:"formatVersion"`
-	Command       string   `json:"command"`
-	Passed        bool     `json:"passed"`
-	Summary       string   `json:"summary"`
-	Order         []string `json:"order"`   // the order that was checked
-	Drained       []string `json:"drained"` // nodes that could be drained (Section 5.4)
-	Steps         []Step   `json:"steps"`
-	Failure       *Failure `json:"failure,omitempty"`
-	Snapshot      Snapshot `json:"snapshot"`
-	Nodes         []string `json:"nodes"`            // nodes to drain, in the given order
-	Search        *Search  `json:"search,omitempty"` // present when the given order failed
+	FormatVersion string        `json:"formatVersion"`
+	Command       string        `json:"command"`
+	Passed        bool          `json:"passed"`
+	Summary       string        `json:"summary"`
+	Order         []string      `json:"order"`   // the order that was checked
+	Drained       []string      `json:"drained"` // nodes that could be drained (Section 5.4)
+	Steps         []Step        `json:"steps"`
+	Failure       *Failure      `json:"failure,omitempty"`
+	Snapshot      Snapshot      `json:"snapshot"`
+	Nodes         []string      `json:"nodes"`            // nodes to drain, in the given order
+	Search        *Search       `json:"search,omitempty"` // present when the given order failed
+	Policy        *PolicyImpact `json:"policy,omitempty"` // only in the report of the policy command
 }
 
 // Snapshot describes the snapshot the simulation ran on, shown at the end of
