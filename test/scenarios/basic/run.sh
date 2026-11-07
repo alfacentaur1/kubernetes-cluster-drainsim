@@ -61,3 +61,7 @@ kubectl --kubeconfig "$RO" config set-cluster "$CLUSTER" --server "$SERVER" \
 kubectl --kubeconfig "$RO" config set-credentials drainsim-collector --token "$TOKEN" >/dev/null
 kubectl --kubeconfig "$RO" config set-context readonly --cluster "$CLUSTER" \
   --user drainsim-collector >/dev/null
+# The service account must not be able to evict or cordon.
+echo "can evict: $(kubectl --kubeconfig "$RO" --context readonly auth can-i create pods/eviction -n default || true)"
+echo "can patch nodes: $(kubectl --kubeconfig "$RO" --context readonly auth can-i patch nodes || true)"
+
