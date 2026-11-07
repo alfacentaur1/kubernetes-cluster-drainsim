@@ -65,3 +65,9 @@ kubectl --kubeconfig "$RO" config set-context readonly --cluster "$CLUSTER" \
 echo "can evict: $(kubectl --kubeconfig "$RO" --context readonly auth can-i create pods/eviction -n default || true)"
 echo "can patch nodes: $(kubectl --kubeconfig "$RO" --context readonly auth can-i patch nodes || true)"
 
+snap_rc=0
+"$DRAINSIM" snapshot --kubeconfig "$RO" --context readonly -o "$OUT/snapshot.json" \
+  2>"$OUT/snapshot.err" || snap_rc=$?
+echo "snapshot exit code: $snap_rc"
+[[ $snap_rc -eq 0 ]] || { cat "$OUT/snapshot.err" >&2; exit 1; }
+
