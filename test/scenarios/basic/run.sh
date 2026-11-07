@@ -36,3 +36,6 @@ log "creating cluster $CLUSTER"
 kind delete cluster --name "$CLUSTER" >/dev/null 2>&1 || true
 kind create cluster --name "$CLUSTER" --config "$HERE/kind.yaml" --wait 120s
 
+k apply -f "$HERE/web.yaml"
+k rollout status deployment/web --timeout=180s
+k wait pod -l app=web --for=condition=Ready --timeout=120s
