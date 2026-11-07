@@ -101,6 +101,45 @@ func TestDrainFailsWhenPDBAllowsNoEviction(t *testing.T) {
 	}
 }
 
+// A placed replacement is assumed to become Ready (Section 5.3), so a later
+// drain of its node must respect the budget like for any Ready pod. Found by
+// the kind scenario test/scenarios/basic: three replicas with minAvailable 2
+// all moved to node-b; draining node-b then evicted all three although their
+// replacements stayed Pending, while kubectl drain is blocked after the first.
+func TestPlacedReplacementIsProtectedByBudget(t *testing.T) {
+	budget := policyv1.PodDisruptionBudget{
+		ObjectMeta: metav1.ObjectMeta{Namespace: "default", Name: "web-pdb"},
+		Spec: policyv1.PodDisruptionBudgetSpec{
+			Selector: &metav1.LabelSelector{MatchLabels: map[string]string{"app": "web"}},
+		},
+		Status: policyv1.PodDisruptionBudgetStatus{CurrentHealthy: 3, DesiredHealthy: 2, DisruptionsAllowed: 1, ExpectedPods: 3},
+	}
+	var pods []corev1.Pod
+	for _, name := range []string{"web-7d4b9c-aaaaa", "web-7d4b9c-bbbbb", "web-7d4b9c-ccccc"} {
+		p := runningPod(name, owner("ReplicaSet", "web-7d4b9c"))
+		p.GenerateName = "web-7d4b9c-"
+		pods = append(pods, p)
+	}
+	e, _, st := newEngine(t, &snapshot.Snapshot{
+		Nodes: []corev1.Node{node("node-a"), node("node-b")},
+		Pods:  pods,
+		PDBs:  []policyv1.PodDisruptionBudget{budget},
+	}, nil)
+
+	res, err := e.Drain(context.Background(), []string{"node-a", "node-b"})
+	if err != nil {
+		t.Fatalf("Drain() error = %v", err)
+	}
+	if res.Failed != "node-b" || !slices.Equal(res.Drained, []string{"node-a"}) {
+		t.Errorf("Drain() = %+v, want node-a drained and node-b failed", res)
+	}
+	// Only one replica may leave node-b: the budget allows one disruption
+	// and its replacement has no node to go to.
+	if got := len(st.PodsOnNode("node-b")); got != 2 {
+		t.Errorf("pods on node-b = %d, want 2 still running", got)
+	}
+}
+
 // A replacement that violates the target level is a lost replica: it is not
 // placed, but the drain of the node still succeeds (FR31, S2).
 func TestDrainLosesReplicaRejectedByTargetLevel(t *testing.T) {

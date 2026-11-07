@@ -208,3 +208,24 @@ should not hide the other.
 (inconsistent with the coefficients); a single "known" flag (would drop the
 money saving whenever the region is missing); skipping nodes without a price
 (would change the answer to Q2 because of missing cost data).
+
+## 2026-11-07 — Scenario tests compare the outcome, not the timing
+
+**Decision:** The kind scenarios (`test/scenarios/`) compare, per node,
+whether the drain succeeds and where the pods end up. They do not compare
+how long a drain takes or the exit code of `kubectl drain` with that of
+drainsim. drainsim reports a blocked drain as soon as a round of evictions
+makes no progress; `kubectl drain` retries every 5 s until its `--timeout`.
+The node image is `kindest/node:v1.36.4`, the newest 1.36 image of kind
+v0.33.0, while the libraries are pinned to v1.36.5.
+
+**Reason:** A budget that cannot recover (its replacement stays Pending)
+never lets the drain finish, so waiting longer cannot change the answer;
+the timeout of kubectl only decides when it gives up. Exit code 1 means a
+failed check for drainsim but any error for kubectl, so equal codes would be
+a coincidence. Patch versions of one minor release do not change the
+scheduler or the Eviction API that the simulation re-implements.
+
+**Alternatives:** Simulating the kubectl timeout (adds time to a model that
+has none, NFR7); building a 1.36.5 node image ourselves (slower, not
+reproducible from the kind release notes).

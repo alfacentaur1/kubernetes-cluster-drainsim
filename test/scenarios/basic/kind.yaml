@@ -1,0 +1,13 @@
+# Cluster of the basic scenario: one control plane and two workers.
+# The node image has the same minor version as the Kubernetes libraries of
+# drainsim (k8s.io/* v0.36). Tag and digest are taken from the release notes
+# of kind v0.33.0, which say the digest must be used.
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+nodes:
+  - role: control-plane
+    image: kindest/node:v1.36.4@sha256:099e049362a1526b2db71494e1947aae99bd16290d7c895f2b7ea312e3cbfaed
+  - role: worker
+    image: kindest/node:v1.36.4@sha256:099e049362a1526b2db71494e1947aae99bd16290d7c895f2b7ea312e3cbfaed
+  - role: worker
+    image: kindest/node:v1.36.4@sha256:099e049362a1526b2db71494e1947aae99bd16290d7c895f2b7ea312e3cbfaed
