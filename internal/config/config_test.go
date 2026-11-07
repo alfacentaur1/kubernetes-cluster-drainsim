@@ -103,3 +103,21 @@ func write(t *testing.T, content string) string {
 	}
 	return path
 }
+
+// The example configuration in examples/ stays valid: it parses with strict
+// parsing and configures both analyses.
+func TestExampleConfiguration(t *testing.T) {
+	c, err := Load(filepath.Join("..", "..", "examples", "drainsim.yaml"))
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if c.PolicyTargets.Empty() || c.Estimate.Empty() {
+		t.Errorf("Load() = %+v, want policy targets and an estimate", c)
+	}
+	if c.Estimate.Period() != 730 {
+		t.Errorf("Period() = %v, want 730", c.Estimate.Period())
+	}
+	if _, ok := c.Estimate.Regions["westeurope"]; !ok {
+		t.Errorf("Regions = %v, want westeurope", c.Estimate.Regions)
+	}
+}
