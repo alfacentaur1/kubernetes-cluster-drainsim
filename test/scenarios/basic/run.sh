@@ -87,3 +87,23 @@ log "simulating"
 simulate w1 "$W1"
 simulate w1w2 "$W1,$W2"
 
+# --- 4. real drains ----------------------------------------------------------
+declare -A REAL
+placement() { # placement FILE: where the pods of web are, and pending ones
+  k get pods -l app=web -o custom-columns=POD:.metadata.name,PHASE:.status.phase,NODE:.spec.nodeName --no-headers \
+    | sort | tee "$1"
+}
+real_drain() { # real_drain NAME NODE TIMEOUT
+  local name=$1 node=$2 timeout=$3 rc=0
+  k drain "$node" --ignore-daemonsets --timeout="$timeout" >"$OUT/real-$name.log" 2>&1 || rc=$?
+  echo "kubectl drain $node: exit code $rc"
+  REAL[$name]=$rc
+  placement "$OUT/real-$name.pods"
+}
+log "draining $W1 for real"
+real_drain w1 "$W1" 180s
+# Give the last replacement time to become Ready before the next drain.
+k rollout status deployment/web --timeout=60s || true
+log "draining $W2 for real (after $W1)"
+real_drain w1w2 "$W2" 60s
+
