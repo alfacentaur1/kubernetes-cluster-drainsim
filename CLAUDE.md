@@ -42,7 +42,11 @@ go build -o drainsim ./cmd/drainsim
 ./drainsim snapshot -o cluster.json [--kubeconfig F] [--context C]
 ./drainsim drain cluster.json [--nodes a,b | --selector k=v] [--strategy greedy|backtracking] [--max-attempts N] [--format text|json]
 ./drainsim policy cluster.json --config drainsim.yaml [--nodes … | --selector …] [--format …]
+./drainsim consolidate cluster.json [--config drainsim.yaml] [--nodes … | --selector …] [--format …]
 ```
+
+`examples/drainsim.yaml` is a full configuration (policy targets, Azure
+prices, Cloud Carbon Footprint coefficients) with the source of every value.
 
 Always run all four checks (gofmt, build, vet, test) before reporting that a
 change is done. `go build` does not compile `_test.go` files.
