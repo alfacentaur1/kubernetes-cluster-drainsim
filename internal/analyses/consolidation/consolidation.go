@@ -48,9 +48,11 @@ type Kept struct {
 }
 
 // Run follows Algorithm 5.3. It tries the nodes one by one, starting with the
-// node whose pods reserve the least. A node is removed if its drain succeeds
-// and every replacement is placed, because FR24 requires all pods to keep
-// running; otherwise the state is restored and the node stays. Removal is a
+// node whose pods reserve the least. A node is removed only if its drain
+// succeeds and every replacement is placed, because FR24 requires all pods
+// to keep running, while a drain alone passes even when a replacement stays
+// Pending (FR24 vs. Section 2.7); otherwise the state is restored and the
+// node stays. Removal is a
 // simulated drain, so PodDisruptionBudgets, placement rules and Pod Security
 // levels apply as in Q1 (FR25). If cost is not nil, the saving of every
 // removed node is estimated (FR26).
@@ -58,6 +60,10 @@ func Run(ctx context.Context, sim engine.Simulation, nodes []string, cost CostMo
 	res := Result{Info: sim.Info(), LowerBound: lowerBound(sim, nodes)}
 
 	// N sorted by the requests of its pods (ascending), once at the start.
+	// The requests change as pods move to the remaining nodes, but the order
+	// is not recomputed: Algorithm 5.3 sorts N once and never goes back. The
+	// drain order search, in contrast, re-sorts the candidates at each step,
+	// because Section 5.4 says "at each step".
 	res.Nodes = byRequests(sim, nodes)
 
 	for _, n := range res.Nodes {
