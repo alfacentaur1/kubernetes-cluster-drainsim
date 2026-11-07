@@ -38,6 +38,8 @@ type Report struct {
 	Nodes         []string      `json:"nodes"`            // nodes to drain, in the given order
 	Search        *Search       `json:"search,omitempty"` // present when the given order failed
 	Policy        *PolicyImpact `json:"policy,omitempty"` // only in the report of the policy command
+	// Consolidation is only in the report of the consolidate command.
+	Consolidation *Consolidation `json:"consolidation,omitempty"`
 }
 
 // Snapshot describes the snapshot the simulation ran on, shown at the end of

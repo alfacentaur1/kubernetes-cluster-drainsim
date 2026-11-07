@@ -86,6 +86,13 @@ type Region struct {
 	GridGramsPerKWh float64 `json:"gridGramsPerKWh"` // grid intensity, g CO₂e per kWh
 }
 
+// Empty reports whether the estimate section configures no instance type.
+// Without instance types no saving can be known, so the consolidation runs
+// without a cost model (Section 5.5).
+func (e Estimate) Empty() bool {
+	return len(e.InstanceTypes) == 0
+}
+
 // Period returns the period of the estimate in hours.
 func (e Estimate) Period() float64 {
 	if e.Hours == 0 {

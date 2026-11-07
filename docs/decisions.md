@@ -229,3 +229,23 @@ scheduler or the Eviction API that the simulation re-implements.
 **Alternatives:** Simulating the kubectl timeout (adds time to a model that
 has none, NFR7); building a 1.36.5 node image ourselves (slower, not
 reproducible from the kind release notes).
+
+## 2026-11-07 — The consolidate command always exits with 0
+
+**Decision:** `drainsim consolidate` returns exit code 0 for every run that
+completes, also when no node can be removed, and 2 for invalid input (bad
+flag, unreadable snapshot or configuration, unknown node). It never returns
+1. Its report always has `passed: true`. Without `--config`, or with a
+configuration that has no instance types in `estimate`, it runs without a
+cost model and reports the savings as unknown.
+
+**Reason:** Exit code 1 means "the check failed" (FR35): the given nodes
+cannot be drained, or a policy change would break a drain. The consolidation
+answers a question (Q2) instead of checking a condition: "no node can be
+removed" is a valid answer, not a failure, and a pipeline should not stop on
+it. Prices and emission factors are the user's decision and often
+unavailable, so the removable nodes must be found without them (Section 5.5).
+
+**Alternatives:** Exit code 1 when no node can be removed (would mark a
+well-sized cluster as an error); requiring `--config` (would hide the answer
+to Q2 when no prices are at hand).

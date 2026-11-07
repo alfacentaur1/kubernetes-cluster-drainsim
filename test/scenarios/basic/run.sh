@@ -32,6 +32,9 @@ if [[ -z "${DRAINSIM:-}" ]]; then
 fi
 
 # --- 1. cluster and workload -------------------------------------------------
+# kind and kubectl use a kubeconfig of their own in $OUT, so the scenario
+# never changes ~/.kube/config.
+export KUBECONFIG="$OUT/kind.kubeconfig"
 log "creating cluster $CLUSTER"
 kind delete cluster --name "$CLUSTER" >/dev/null 2>&1 || true
 kind create cluster --name "$CLUSTER" --config "$HERE/kind.yaml" --wait 120s

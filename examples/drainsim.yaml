@@ -1,0 +1,56 @@
+# Example configuration of drainsim (artifact Configuration, Figure 5.1).
+# Used by `drainsim policy --config` (policyTargets) and
+# `drainsim consolidate --config` (estimate). All values below were looked up
+# on 2026-11-07; the source of each is given next to it. Check them before
+# relying on the result: prices and emission factors change.
+
+# Target Pod Security levels for the policy impact analysis (FR29).
+policyTargets:
+  cluster: baseline          # every namespace not listed below
+  namespaces:
+    shop: restricted
+    payments: restricted
+
+# Cost and CO2 estimate of the consolidation (FR26-FR28, Section 5.5).
+estimate:
+  # hours: 730               # period of the estimate; missing = one month (730 h)
+  currency: EUR              # only shown in the report; must match the prices
+
+  # Energy coefficients of Cloud Carbon Footprint (CCF) for Azure, from
+  # packages/azure/src/domain/AzureFootprintEstimationConstants.ts
+  # (github.com/cloud-carbon-footprint/cloud-carbon-footprint, branch trunk,
+  # read 2026-11-07). The methodology page (cloudcarbonfootprint.org/docs/
+  # methodology, Appendix I) lists 0.78 W and PUE 1.125 instead; the values
+  # here are the ones the CCF code computes with.
+  coefficients:
+    minWattsPerVcpu: 0.74         # MIN_WATTS_AVG, W per vCPU at 0 % utilization
+    memoryKWhPerGBHour: 0.000392  # MEMORY_COEFFICIENT, kWh per GB-hour
+    pue: 1.185                    # PUE_AVG
+
+  # Key = value of the node label node.kubernetes.io/instance-type.
+  # pricePerHour: pay-as-you-go Linux price in EUR from the Azure Retail
+  # Prices API (prices.azure.com/api/retail/prices, currencyCode 'EUR',
+  # priceType Consumption, product "Virtual Machines Dsv5 Series", not
+  # Windows/Spot/Low Priority; read 2026-11-07, effectiveStartDate
+  # 2021-11-01). The price is the same in germanywestcentral and westeurope;
+  # the tool keys prices by instance type only.
+  # embodiedGramsPerHour is left out: the CCF embodied-emissions data
+  # (ccf-coefficients, output/coefficients-azure-embodied.csv, read
+  # 2026-11-07) has no rows for the Dsv5 series, so the CO2 estimate
+  # covers only the energy of the node, not its embodied emissions.
+  instanceTypes:
+    Standard_D2s_v5:
+      pricePerHour: 0.1032
+    Standard_D4s_v5:
+      pricePerHour: 0.2065
+    Standard_D8s_v5:
+      pricePerHour: 0.4129
+
+  # Key = value of the node label topology.kubernetes.io/region.
+  # Grid intensity from CCF AZURE_EMISSIONS_FACTORS_METRIC_TON_PER_KWH in the
+  # same constants file (read 2026-11-07), converted from t to g CO2e per kWh.
+  regions:
+    germanywestcentral:
+      gridGramsPerKWh: 338.66  # 0.00033866 t/kWh (Frankfurt)
+    westeurope:
+      gridGramsPerKWh: 328.4   # 0.0003284 t/kWh (Netherlands)
