@@ -18,3 +18,8 @@ W2="$CLUSTER-worker2"
 
 log() { printf '\n==> %s\n' "$*"; }
 k() { kubectl --context "$CTX" "$@"; }
+
+for tool in docker kind kubectl jq; do
+  command -v "$tool" >/dev/null || { echo "missing tool: $tool" >&2; exit 2; }
+done
+
