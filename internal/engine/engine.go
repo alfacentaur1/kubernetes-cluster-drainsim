@@ -75,6 +75,9 @@ type Simulation interface {
 	Requested(node string) corev1.ResourceList
 	// Allocatable returns the resources of the node that pods can use.
 	Allocatable(node string) corev1.ResourceList
+	// Node returns a copy of the node, or nil if it does not exist. The
+	// consolidation passes it to the cost model (Section 5.5).
+	Node(name string) *corev1.Node
 }
 
 // Result is the outcome of draining nodes in the given order. The drain stops
@@ -381,4 +384,13 @@ func (e *Engine) Allocatable(node string) corev1.ResourceList {
 		return nil
 	}
 	return n.Status.Allocatable.DeepCopy()
+}
+
+// Node returns a deep copy of the node, or nil if the node does not exist.
+func (e *Engine) Node(name string) *corev1.Node {
+	n := e.state.Node(name)
+	if n == nil {
+		return nil
+	}
+	return n.DeepCopy()
 }

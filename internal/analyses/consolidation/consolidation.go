@@ -8,7 +8,16 @@ import (
 
 	"github.com/alfacentaur1/kubernetes-cluster-drainsim/internal/engine"
 	"github.com/alfacentaur1/kubernetes-cluster-drainsim/internal/engine/eventlog"
+	"github.com/alfacentaur1/kubernetes-cluster-drainsim/internal/estimator"
+	corev1 "k8s.io/api/core/v1"
 )
+
+// CostModel estimates what removing a node saves (ICostModel, Strategy
+// pattern, Section 5.5). The consolidation does not depend on how prices and
+// emissions are obtained; estimator.Estimator is the implementation.
+type CostModel interface {
+	Estimate(node *corev1.Node) estimator.Saving
+}
 
 // Result is the outcome of the consolidation (component Consolidation,
 // Section 5.5).
@@ -23,6 +32,9 @@ type Result struct {
 	// LowerBound is the smallest number of nodes any solution needs
 	// (Section 5.5). The greedy procedure may keep more.
 	LowerBound int
+	// Savings holds one estimate per removed node, in removal order. It is
+	// empty if no cost model is given.
+	Savings []estimator.Saving
 	// Events are the decisions of the drains of the removed nodes.
 	Events []eventlog.Event
 	// Info describes the snapshot (Section 5.7).
@@ -40,8 +52,9 @@ type Kept struct {
 // and every replacement is placed, because FR24 requires all pods to keep
 // running; otherwise the state is restored and the node stays. Removal is a
 // simulated drain, so PodDisruptionBudgets, placement rules and Pod Security
-// levels apply as in Q1 (FR25).
-func Run(ctx context.Context, sim engine.Simulation, nodes []string) (Result, error) {
+// levels apply as in Q1 (FR25). If cost is not nil, the saving of every
+// removed node is estimated (FR26).
+func Run(ctx context.Context, sim engine.Simulation, nodes []string, cost CostModel) (Result, error) {
 	res := Result{Info: sim.Info(), LowerBound: lowerBound(sim, nodes)}
 
 	// N sorted by the requests of its pods (ascending), once at the start.
@@ -55,6 +68,11 @@ func Run(ctx context.Context, sim engine.Simulation, nodes []string) (Result, er
 		if !ok {
 			res.Kept = append(res.Kept, Kept{Node: n, Reason: reason})
 			continue
+		}
+		// The node is estimated before it is removed: afterwards sim.Node
+		// returns nil and its labels and capacity are gone.
+		if cost != nil {
+			res.Savings = append(res.Savings, cost.Estimate(sim.Node(n)))
 		}
 		// remove n from the cluster state, append n to removed
 		if err := sim.RemoveNode(n); err != nil {

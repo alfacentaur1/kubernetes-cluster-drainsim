@@ -1,5 +1,12 @@
 package config
 
+import (
+	"fmt"
+	"os"
+
+	"sigs.k8s.io/yaml"
+)
+
 //format in yaml:
 //policyTargets:
 //	cluster: baseline        # every namespace not listed below
@@ -14,6 +21,34 @@ package config
 type Config struct {
 	PolicyTargets PolicyTargets `json:"policyTargets"`
 	Estimate      Estimate      `json:"estimate"`
+}
+
+// PolicyTargets are the target Pod Security levels for the policy impact
+// analysis (FR29): one level per namespace, and one for every namespace that
+// is not listed. Levels are "privileged", "baseline" or "restricted".
+type PolicyTargets struct {
+	Cluster    string            `json:"cluster,omitempty"`
+	Namespaces map[string]string `json:"namespaces,omitempty"`
+}
+
+// Empty reports whether no target level is set.
+func (t PolicyTargets) Empty() bool {
+	return t.Cluster == "" && len(t.Namespaces) == 0
+}
+
+// Load reads a configuration file. Unknown fields are an error, so that a
+// typo such as "policyTarget" is not silently ignored (NFR17). The levels
+// themselves are checked by the PSA checker that uses them.
+func Load(path string) (*Config, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("reading configuration: %w", err)
+	}
+	var c Config
+	if err := yaml.UnmarshalStrict(data, &c); err != nil {
+		return nil, fmt.Errorf("configuration %s: %w", path, err)
+	}
+	return &c, nil
 }
 
 // Estimate holds the values the cost and CO₂ estimator needs (FR26–FR28,
