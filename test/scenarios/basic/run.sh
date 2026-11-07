@@ -47,3 +47,17 @@ done
   { echo "PDB web does not allow 1 disruption" >&2; exit 1; }
 k get pods -A -o wide >"$OUT/pods-before.txt"
 
+# --- 2. read-only snapshot (NFR1) --------------------------------------------
+log "taking a snapshot with the read-only service account"
+k apply -f "$ROOT/test/rbac/readonly.yaml"
+RO="$OUT/readonly.kubeconfig"
+SERVER="$(k config view --raw --minify -o jsonpath='{.clusters[0].cluster.server}')"
+k config view --raw --minify -o jsonpath='{.clusters[0].cluster.certificate-authority-data}' |
+  base64 -d >"$OUT/ca.crt"
+TOKEN="$(k -n default create token drainsim-collector --duration=1h)"
+# A kubeconfig with only the token: no admin credentials can leak in.
+kubectl --kubeconfig "$RO" config set-cluster "$CLUSTER" --server "$SERVER" \
+  --certificate-authority "$OUT/ca.crt" --embed-certs >/dev/null
+kubectl --kubeconfig "$RO" config set-credentials drainsim-collector --token "$TOKEN" >/dev/null
+kubectl --kubeconfig "$RO" config set-context readonly --cluster "$CLUSTER" \
+  --user drainsim-collector >/dev/null
