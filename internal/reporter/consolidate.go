@@ -113,7 +113,7 @@ func consolidateSummary(nodes int, c *Consolidation) string {
 	if t.CO2Unknown < removed {
 		co2 = fmt.Sprintf("%.1f kg CO₂e", t.CO2eKg)
 	}
-	s += fmt.Sprintf(" Saving %s: %s, %s", Period(c.Hours), money, co2)
+	s += fmt.Sprintf(" Saving %s: %s, %s", period(c.Hours), money, co2)
 	if n := partlyUnknown(c.Savings); n > 0 && n < removed {
 		s += fmt.Sprintf(" (%s unknown)", plural(n, "node", "nodes"))
 	}
@@ -131,9 +131,9 @@ func partlyUnknown(savings []estimator.Saving) int {
 	return n
 }
 
-// Period describes the period of the estimate: "per month" for 730 h (FR27),
+// period describes the period of the estimate: "per month" for 730 h (FR27),
 // otherwise the number of hours.
-func Period(hours float64) string {
+func period(hours float64) string {
 	if hours == 730 {
 		return "per month"
 	}

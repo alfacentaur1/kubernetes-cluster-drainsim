@@ -87,6 +87,10 @@ func Text(w io.Writer, r Report) error {
 	if p := r.Policy; p != nil {
 		writePolicy(&b, p)
 	}
+	// Consolidation (Section 5.5): removable and kept nodes, savings.
+	if c := r.Consolidation; c != nil {
+		writeConsolidation(&b, c)
+	}
 
 	// Snapshot the simulation ran on.
 	writeSnapshot(&b, r.Snapshot)
@@ -150,4 +154,67 @@ func writePolicy(b *strings.Builder, p *PolicyImpact) {
 			fmt.Fprintf(b, "    %s\n", v.Controls)
 		}
 	}
+}
+
+// writeConsolidation writes the removable nodes, the kept nodes with their
+// reasons, the lower bound and the savings per node and in total (UC10–UC12).
+func writeConsolidation(b *strings.Builder, c *Consolidation) {
+	if len(c.Removed) > 0 {
+		fmt.Fprintf(b, "\nRemovable nodes, in order: %s\n", strings.Join(c.Removed, ", "))
+	} else {
+		b.WriteString("\nRemovable nodes: none\n")
+	}
+	if len(c.Kept) > 0 {
+		b.WriteString("Kept nodes:\n")
+		for _, k := range c.Kept {
+			fmt.Fprintf(b, "  %s: %s\n", k.Node, k.Reason)
+		}
+	}
+	fmt.Fprintf(b, "Lower bound: at least %s needed\n", plural(c.LowerBound, "node is", "nodes are"))
+
+	if c.Total == nil {
+		if len(c.Removed) > 0 {
+			b.WriteString("Savings: unknown (no estimate section in the configuration)\n")
+		}
+		return
+	}
+	if len(c.Savings) == 0 {
+		return
+	}
+	fmt.Fprintf(b, "Savings %s:\n", period(c.Hours))
+	for _, s := range c.Savings {
+		fmt.Fprintf(b, "  %s (%s, %s): %s, %s\n", s.Node, orUnknown(s.InstanceType), orUnknown(s.Region),
+			moneyText(s.MoneyKnown, s.Money, c.Currency), co2Text(s.CO2Known, s.EnergyKWh, s.CO2eKg))
+	}
+	t := c.Total
+	fmt.Fprintf(b, "  total: %s, %s", moneyText(true, t.Money, c.Currency), co2Text(true, t.EnergyKWh, t.CO2eKg))
+	if t.MoneyUnknown > 0 || t.CO2Unknown > 0 {
+		fmt.Fprintf(b, " (money unknown for %s, CO₂ unknown for %s)",
+			plural(t.MoneyUnknown, "node", "nodes"), plural(t.CO2Unknown, "node", "nodes"))
+	}
+	b.WriteString("\n")
+}
+
+// moneyText formats a money saving, or "money unknown".
+func moneyText(known bool, money float64, currency string) string {
+	if !known {
+		return "money unknown"
+	}
+	return fmt.Sprintf("%.2f %s", money, currency)
+}
+
+// co2Text formats an energy and CO₂ saving, or "CO₂e unknown".
+func co2Text(known bool, kWh, kg float64) string {
+	if !known {
+		return "CO₂e unknown"
+	}
+	return fmt.Sprintf("%.1f kWh, %.1f kg CO₂e", kWh, kg)
+}
+
+// orUnknown returns s, or "unknown" if s is empty.
+func orUnknown(s string) string {
+	if s == "" {
+		return "unknown"
+	}
+	return s
 }
