@@ -211,21 +211,17 @@ Rules that keep the code aligned with the diagrams:
 | M4 report + `drain` command | done (report tests pending) |
 | M5 drain order search: greedy, backtracking, `--strategy`, `--max-attempts` | done |
 | M6 policy impact: config, running-pod check, Alg. 5.4, `policy` command | done |
-| M7 consolidation (Alg. 5.3), lower bound, cost/CO₂ estimator | in progress |
-| M8 scenario clusters (kind) P1–S3, RQ1 comparison with real drains, benchmarks (NFR9), CI | not started |
+| M7 consolidation (Alg. 5.3), lower bound, cost/CO₂ estimator, `consolidate` command, example configuration | in progress (usage profiles and right-sizing open) |
+| M8 scenario clusters (kind) P1–S3, RQ1 comparison with real drains, benchmarks (NFR9), CI | started: `test/scenarios/basic` (PDB, two workers) matches real drains |
 
 Next steps in M7, in this order:
-1. `drainsim consolidate` command and its report section (removable nodes,
-   kept nodes with reasons, lower bound, savings; Section 5.7, UC10–UC12);
-   example configuration with Azure prices and Cloud Carbon Footprint
-   coefficients.
-2. Usage profiles per workload and container in the snapshot (Fig 5.2).
-3. Collector: read usage from Prometheus (FR20) — p95 CPU and max memory per
+1. Usage profiles per workload and container in the snapshot (Fig 5.2).
+2. Collector: read usage from Prometheus (FR20) — p95 CPU and max memory per
    container, assigned to the workload via `kube_pod_owner`; develop against a
    fake Prometheus (`httptest`).
-4. Right-sizing (FR21–FR23): engine method to replace container requests
+3. Right-sizing (FR21–FR23): engine method to replace container requests
    (ISimulation: "replace the requests of containers"), then consolidate again.
 
-Known open items: `.gitattributes` is UTF-16 on `develop` and must be rewritten
-as ASCII; Fig 5.4 still lacks the "refused pods → drain fails" branch (diagram
-only).
+Known open items: Fig 5.4 still lacks the "refused pods → drain fails" branch
+(diagram only); `examples/drainsim.yaml` has no embodied emissions, because
+the CCF data has no rows for the Dsv5 series.
