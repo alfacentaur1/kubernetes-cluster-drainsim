@@ -71,3 +71,19 @@ snap_rc=0
 echo "snapshot exit code: $snap_rc"
 [[ $snap_rc -eq 0 ]] || { cat "$OUT/snapshot.err" >&2; exit 1; }
 
+# --- 3. simulated drains -----------------------------------------------------
+declare -A SIM
+simulate() { # simulate NAME NODES
+  local name=$1 nodes=$2 rc
+  for fmt in text json; do
+    rc=0
+    "$DRAINSIM" drain "$OUT/snapshot.json" --nodes "$nodes" --format "$fmt" \
+      >"$OUT/sim-$name.$fmt" 2>"$OUT/sim-$name.$fmt.err" || rc=$?
+    echo "drainsim drain --nodes $nodes --format $fmt: exit code $rc"
+    SIM[$name.$fmt]=$rc
+  done
+}
+log "simulating"
+simulate w1 "$W1"
+simulate w1w2 "$W1,$W2"
+
