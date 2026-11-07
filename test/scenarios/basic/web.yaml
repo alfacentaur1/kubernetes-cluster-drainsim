@@ -23,3 +23,14 @@ spec:
             requests:
               cpu: 100m
               memory: 64Mi
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: web
+  namespace: default
+spec:
+  minAvailable: 2
+  selector:
+    matchLabels:
+      app: web
