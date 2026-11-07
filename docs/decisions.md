@@ -166,3 +166,21 @@ the analysis report that the new policy has no effect.
 **Alternatives:** JSON (harder to write by hand); command-line flags such as
 `--target shop=restricted` (unwieldy for many namespaces and for the prices
 added later).
+
+## 2026-11-07 — Consolidation keeps a node unless all pods still run
+
+**Decision:** In Algorithm 5.3, the drain of a node counts as a success only
+if the drain passes and every replacement is placed. A removed node is deleted
+from the cluster state together with the DaemonSet and mirror pods left on it.
+The lower bound uses the largest node and the larger of the CPU and memory
+bounds.
+
+**Reason:** FR24 asks for nodes that can be removed while all pods still run,
+but a drain passes even when a replacement stays Pending (Section 2.7).
+DaemonSet and mirror pods exist only with their node. Using the largest node
+keeps the bound valid when nodes differ in size, and equals the formula of
+Section 5.5 for nodes of one size.
+
+**Alternatives:** Accepting a drain with pending replacements (would report
+nodes as removable while pods stop running); the average node size for the
+bound (not a valid lower bound for mixed nodes).
