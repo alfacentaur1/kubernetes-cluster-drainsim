@@ -219,6 +219,20 @@ func (s *ClusterState) Bind(namespace, name, nodeName string) error {
 	return nil
 }
 
+// MarkReady sets the pod to Running and Ready. The engine calls it for a
+// replacement it has placed, which is assumed to start (Section 5.3), so a
+// later drain treats the replacement like any other Ready pod. It returns an
+// error if the pod does not exist.
+func (s *ClusterState) MarkReady(namespace, name string) error {
+	pod, ok := s.pods[objectKey(namespace, name)]
+	if !ok {
+		return fmt.Errorf("pod %s/%s not found", namespace, name)
+	}
+	pod.Status.Phase = corev1.PodRunning
+	pod.Status.Conditions = []corev1.PodCondition{{Type: corev1.PodReady, Status: corev1.ConditionTrue}}
+	return nil
+}
+
 // Requested returns the sum of the resource requests of all pods bound to
 // the node. It returns nil if the node does not exist.
 func (s *ClusterState) Requested(nodeName string) corev1.ResourceList {
