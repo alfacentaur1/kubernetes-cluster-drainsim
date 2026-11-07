@@ -30,3 +30,23 @@ The placement of the three replicas at the start is chosen by the real
 scheduler and may differ between runs (all on worker 1, or split); the
 results above hold in both cases.
 
+## How to run
+
+Requirements: Docker, kind (tested with v0.33.0), kubectl and jq on Linux or
+WSL 2. The node image is `kindest/node:v1.36.4`, the same minor version as
+the Kubernetes libraries of drainsim (v0.36); tag and digest come from the
+kind v0.33.0 release notes.
+
+```bash
+./test/scenarios/basic/run.sh
+```
+
+The script builds drainsim with `go build` unless `DRAINSIM` points to a
+binary, e.g. one cross-compiled on Windows with
+`GOOS=linux GOARCH=amd64 go build -o drainsim ./cmd/drainsim`. It deletes and
+recreates the cluster `drainsim-basic` (`CLUSTER` overrides the name), so it
+can be run again at any time. Everything it produces goes to `out/` (`OUT`
+overrides it): the snapshot, the text and JSON reports with their exit codes,
+the logs of `kubectl drain` and where the pods of `web` ended up.
+
+Delete the cluster afterwards with `kind delete cluster --name drainsim-basic`.
