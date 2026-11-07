@@ -40,11 +40,11 @@ estimate:
   # covers only the energy of the node, not its embodied emissions.
   instanceTypes:
     Standard_D2s_v5:
-      pricePerHour: 0.1032   # 2 vCPU, 8 GiB
+      pricePerHour: 0.1032
     Standard_D4s_v5:
-      pricePerHour: 0.2065   # 4 vCPU, 16 GiB
+      pricePerHour: 0.2065
     Standard_D8s_v5:
-      pricePerHour: 0.4129   # 8 vCPU, 32 GiB
+      pricePerHour: 0.4129
 
   # Key = value of the node label topology.kubernetes.io/region.
   # Grid intensity from CCF AZURE_EMISSIONS_FACTORS_METRIC_TON_PER_KWH in the
