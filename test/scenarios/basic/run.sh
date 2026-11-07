@@ -23,3 +23,11 @@ for tool in docker kind kubectl jq; do
   command -v "$tool" >/dev/null || { echo "missing tool: $tool" >&2; exit 2; }
 done
 
+rm -rf "$OUT" && mkdir -p "$OUT"
+
+if [[ -z "${DRAINSIM:-}" ]]; then
+  log "building drainsim"
+  (cd "$ROOT" && go build -o "$OUT/drainsim" ./cmd/drainsim)
+  DRAINSIM="$OUT/drainsim"
+fi
+
