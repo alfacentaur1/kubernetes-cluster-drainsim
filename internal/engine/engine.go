@@ -267,6 +267,12 @@ func (e *Engine) drainPod(ctx context.Context, node string, pod *corev1.Pod) (ou
 	if err := e.state.Bind(repl.Namespace, repl.Name, res.Node); err != nil {
 		return 0, err
 	}
+	// The replacement is assumed to become Ready. Its status must say so,
+	// otherwise a later drain of its node would treat it as not running and
+	// evict it without asking the budget (pdb.Evict).
+	if err := e.state.MarkReady(repl.Namespace, repl.Name); err != nil {
+		return 0, err
+	}
 	pdb.Recover(e.state, repl)
 	e.notify(eventlog.Event{Kind: eventlog.Placed, Node: node, Pod: key(repl), Target: res.Node})
 	return evicted, nil
