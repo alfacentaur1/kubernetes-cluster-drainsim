@@ -67,6 +67,14 @@ type Simulation interface {
 	// CheckRunning checks every running pod against the policy and groups
 	// the violations by workload (FR30).
 	CheckRunning(p PolicyChecker) []Violation
+
+	// RemoveNode removes a drained node from the cluster state (Algorithm 5.3).
+	RemoveNode(node string) error
+	// Requested returns the total requests of all pods on the node, which
+	// the consolidation sorts the nodes by (Section 5.5).
+	Requested(node string) corev1.ResourceList
+	// Allocatable returns the resources of the node that pods can use.
+	Allocatable(node string) corev1.ResourceList
 }
 
 // Result is the outcome of draining nodes in the given order. The drain stops
@@ -356,4 +364,21 @@ func (e *Engine) CheckRunning(p PolicyChecker) []Violation {
 		)
 	})
 	return out
+}
+
+// RemoveNode removes a drained node and the pods that stayed on it.
+func (e *Engine) RemoveNode(node string) error { return e.state.RemoveNode(node) }
+
+// Requested returns the total requests of all running pods on the node,
+// including DaemonSet pods (Section 5.5: "the requests of its pods").
+func (e *Engine) Requested(node string) corev1.ResourceList { return e.state.Requested(node) }
+
+// Allocatable returns the allocatable resources of the node, or nil if the
+// node does not exist.
+func (e *Engine) Allocatable(node string) corev1.ResourceList {
+	n := e.state.Node(node)
+	if n == nil {
+		return nil
+	}
+	return n.Status.Allocatable.DeepCopy()
 }

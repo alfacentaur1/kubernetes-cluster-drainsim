@@ -264,3 +264,20 @@ func (s *ClusterState) Workload(pod *corev1.Pod) (kind, name string) {
 	}
 	return owner.Kind, owner.Name
 }
+
+// RemoveNode removes a node from the cluster state together with the pods
+// still bound to it. After a drain these are DaemonSet and mirror pods, which
+// disappear with their node (Algorithm 5.3: "remove n from the cluster
+// state"). It returns an error if the node does not exist.
+func (s *ClusterState) RemoveNode(name string) error {
+	if _, ok := s.nodes[name]; !ok {
+		return fmt.Errorf("node %q not found", name)
+	}
+	for key, pod := range s.pods {
+		if pod.Spec.NodeName == name {
+			delete(s.pods, key) // deleting while ranging over a map is safe in Go
+		}
+	}
+	delete(s.nodes, name)
+	return nil
+}
