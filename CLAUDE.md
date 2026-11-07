@@ -47,6 +47,28 @@ go build -o drainsim ./cmd/drainsim
 Always run all four checks (gofmt, build, vet, test) before reporting that a
 change is done. `go build` does not compile `_test.go` files.
 
+## Environment
+
+- The development machine is Windows; Docker, kind and kubectl run in WSL 2
+  (Ubuntu). Call them with `wsl -- bash -lc '…'`.
+- **Go in WSL is 1.16 (gccgo) and cannot build drainsim.** Build it on Windows
+  for Linux and pass the binary to scripts through `DRAINSIM`:
+  ```bash
+  GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -o <dir>/drainsim ./cmd/drainsim
+  wsl -- bash -lc 'export PATH="$HOME/.local/bin:/snap/bin:$PATH" DRAINSIM=/mnt/c/…/drainsim; ./test/scenarios/basic/run.sh'
+  ```
+  Quote the PATH: WSL appends the Windows PATH, which contains spaces.
+- **kind v0.33.0 is in `~/.local/bin` in WSL** (cross-compiled with
+  `GOOS=linux go install sigs.k8s.io/kind@v0.33.0`). Neither `~/.local/bin`
+  nor `/snap/bin` (jq) is on the PATH of a login shell, so add them as above.
+- **Node image for scenarios: `kindest/node:v1.36.4`** with the digest from the
+  kind v0.33.0 release notes (the newest 1.36 image; the libraries are pinned
+  to v1.36.5, same minor).
+- **Scenario tests live in `test/scenarios/<name>/run.sh`**, with `kind.yaml`,
+  the manifests and a `README.md` next to it. Each script recreates its own
+  cluster and writes to `out/` (ignored by git). Delete the cluster when done:
+  `kind delete cluster --name <cluster>`.
+
 ## Architecture
 
 Each component of Fig 5.1 and Fig 5.3 is one package under `internal/`.
