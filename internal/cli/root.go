@@ -10,8 +10,9 @@ func NewRootCommand(deps Deps) *cobra.Command {
 		SilenceUsage:  true,                                                          // On error, do not print usage.
 		SilenceErrors: true,                                                          // Errors are printed by main.
 	}
-	root.AddCommand(newSnapshotCommand(deps)) // drainsim snapshot
-	root.AddCommand(newDrainCommand(deps))    // drainsim drain
-	root.AddCommand(newPolicyCommand(deps))   // drainsim policy
+	root.AddCommand(newSnapshotCommand(deps))    // drainsim snapshot
+	root.AddCommand(newDrainCommand(deps))       // drainsim drain
+	root.AddCommand(newPolicyCommand(deps))      // drainsim policy
+	root.AddCommand(newConsolidateCommand(deps)) // drainsim consolidate
 	return root
 }
