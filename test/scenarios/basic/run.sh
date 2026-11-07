@@ -107,3 +107,17 @@ k rollout status deployment/web --timeout=60s || true
 log "draining $W2 for real (after $W1)"
 real_drain w1w2 "$W2" 60s
 
+# --- 5. comparison -----------------------------------------------------------
+verdict() { [[ $1 -eq 0 ]] && echo drained || echo "fails (exit $1)"; }
+sim_step() { # sim_step NAME NODE: drained/failed of NODE in the JSON report
+  jq -r --arg n "$2" '[.steps[] | select(.node == $n)][0]
+    | if . == null then "not tried" elif .drained then "drained" else "fails" end' "$OUT/sim-$1.json"
+}
+log "simulated vs real"
+printf '%-50s %-10s %-14s\n' "case / node" "simulated" "real"
+printf '%-50s %-10s %-14s\n' "drain $W1 / $W1" "$(sim_step w1 "$W1")" "$(verdict "${REAL[w1]}")"
+printf '%-50s %-10s %-14s\n' "drain $W1,$W2 / $W2" "$(sim_step w1w2 "$W2")" "$(verdict "${REAL[w1w2]}")"
+printf '%-50s %-10s %-14s\n' "exit code w1 (text/json)" "${SIM[w1.text]}/${SIM[w1.json]}" "${REAL[w1]}"
+printf '%-50s %-10s %-14s\n' "exit code w1,w2 (text/json)" "${SIM[w1w2.text]}/${SIM[w1w2.json]}" "${REAL[w1w2]}"
+echo
+echo "Reports, logs and pod placement are in $OUT"
