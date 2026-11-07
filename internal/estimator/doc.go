@@ -1,2 +1,4 @@
-// Package estimator estimates cost and CO2. Main type: CostModel (ICostModel).
+// Package estimator estimates the money and CO₂ saved by removing nodes
+// (component Cost and CO₂ estimator, Section 5.5). Main type: Estimator,
+// which implements consolidation.CostModel (ICostModel).
 package estimator

@@ -166,3 +166,45 @@ the analysis report that the new policy has no effect.
 **Alternatives:** JSON (harder to write by hand); command-line flags such as
 `--target shop=restricted` (unwieldy for many namespaces and for the prices
 added later).
+
+## 2026-11-07 — Consolidation keeps a node unless all pods still run
+
+**Decision:** In Algorithm 5.3, the drain of a node counts as a success only
+if the drain passes and every replacement is placed. A removed node is deleted
+from the cluster state together with the DaemonSet and mirror pods left on it.
+The lower bound uses the largest node and the larger of the CPU and memory
+bounds.
+
+**Reason:** FR24 asks for nodes that can be removed while all pods still run,
+but a drain passes even when a replacement stays Pending (Section 2.7).
+DaemonSet and mirror pods exist only with their node. Using the largest node
+keeps the bound valid when nodes differ in size, and equals the formula of
+Section 5.5 for nodes of one size.
+
+**Alternatives:** Accepting a drain with pending replacements (would report
+nodes as removable while pods stop running); the average node size for the
+bound (not a valid lower bound for mixed nodes).
+
+## 2026-11-07 — Cost and CO₂ estimate
+
+**Decision:** The estimate covers a period of 730 h (one month, 8760 h / 12)
+unless the configuration sets `hours`. The number of vCPUs and the memory of
+a node come from its Capacity, not its Allocatable; 1 GB is 10^9 bytes. Only
+the idle power of the vCPUs and the energy of the memory are saved, plus the
+embodied emissions of the machine. Money and CO₂ are known separately: a node
+with a price but no grid intensity for its region has a known money saving
+and an unknown CO₂ saving; a node whose instance type is not configured is
+still removed, with both savings unknown.
+
+**Reason:** FR27 asks for a monthly saving, and 730 h is the average month
+used by cloud price lists. The whole machine draws power, including the part
+reserved for the system, so Capacity describes the saved energy. The
+coefficients of Cloud Carbon Footprint are given per 10^9 bytes. The pods of
+a removed node keep running elsewhere, so only the idle power goes away.
+Prices and grid intensities come from different sources, and a missing one
+should not hide the other.
+
+**Alternatives:** Allocatable resources (underestimate the saving); GiB
+(inconsistent with the coefficients); a single "known" flag (would drop the
+money saving whenever the region is missing); skipping nodes without a price
+(would change the answer to Q2 because of missing cost data).

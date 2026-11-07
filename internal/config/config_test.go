@@ -28,6 +28,61 @@ func TestLoadRejectsUnknownField(t *testing.T) {
 	}
 }
 
+// The estimate section of the specification parses with strict parsing
+// (FR26-FR28).
+func TestLoadEstimate(t *testing.T) {
+	path := write(t, `estimate:
+  hours: 730
+  currency: EUR
+  coefficients:
+    minWattsPerVcpu: 0.78
+    memoryKWhPerGBHour: 0.000392
+    pue: 1.185
+  instanceTypes:
+    Standard_D4s_v5:
+      pricePerHour: 0.21
+      embodiedGramsPerHour: 3.2
+  regions:
+    germanywestcentral:
+      gridGramsPerKWh: 338
+`)
+
+	c, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	e := c.Estimate
+	if e.Hours != 730 || e.Currency != "EUR" {
+		t.Errorf("Hours, Currency = %v, %q, want 730, EUR", e.Hours, e.Currency)
+	}
+	want := Coefficients{MinWattsPerVCPU: 0.78, MemoryKWhPerGBHour: 0.000392, PUE: 1.185}
+	if e.Coefficients != want {
+		t.Errorf("Coefficients = %+v, want %+v", e.Coefficients, want)
+	}
+	if it := e.InstanceTypes["Standard_D4s_v5"]; it.PricePerHour != 0.21 || it.EmbodiedGramsPerHour != 3.2 {
+		t.Errorf("InstanceTypes = %+v, want Standard_D4s_v5 at 0.21/h and 3.2 g/h", e.InstanceTypes)
+	}
+	if r := e.Regions["germanywestcentral"]; r.GridGramsPerKWh != 338 {
+		t.Errorf("Regions = %+v, want germanywestcentral at 338 g/kWh", e.Regions)
+	}
+}
+
+// Without hours the period is one month, 730 h (FR27).
+func TestPeriodDefaultsToMonth(t *testing.T) {
+	path := write(t, "estimate:\n  currency: EUR\n")
+
+	c, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if got := c.Estimate.Period(); got != 730 {
+		t.Errorf("Period() = %v, want 730", got)
+	}
+	if got := (Estimate{Hours: 24}).Period(); got != 24 {
+		t.Errorf("Period() with hours 24 = %v, want 24", got)
+	}
+}
+
 // write saves content to a temporary file and returns its path.
 func write(t *testing.T, content string) string {
 	t.Helper()

@@ -198,3 +198,7 @@ func describe(events []eventlog.Event) []string {
 }
 
 func (f *fakeSim) CheckRunning(engine.PolicyChecker) []engine.Violation { return nil }
+func (f *fakeSim) RemoveNode(string) error                              { return nil }
+func (f *fakeSim) Requested(string) corev1.ResourceList                 { return nil }
+func (f *fakeSim) Allocatable(string) corev1.ResourceList               { return nil }
+func (f *fakeSim) Node(string) *corev1.Node                             { return nil }
