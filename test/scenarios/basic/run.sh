@@ -39,3 +39,11 @@ kind create cluster --name "$CLUSTER" --config "$HERE/kind.yaml" --wait 120s
 k apply -f "$HERE/web.yaml"
 k rollout status deployment/web --timeout=180s
 k wait pod -l app=web --for=condition=Ready --timeout=120s
+for _ in $(seq 60); do
+  [[ "$(k get pdb web -o jsonpath='{.status.disruptionsAllowed}')" == 1 ]] && break
+  sleep 1
+done
+[[ "$(k get pdb web -o jsonpath='{.status.disruptionsAllowed}')" == 1 ]] ||
+  { echo "PDB web does not allow 1 disruption" >&2; exit 1; }
+k get pods -A -o wide >"$OUT/pods-before.txt"
+
