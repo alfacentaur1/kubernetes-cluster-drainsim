@@ -83,6 +83,17 @@ func TestPeriodDefaultsToMonth(t *testing.T) {
 	}
 }
 
+// An estimate without instance types is empty: no saving can be known.
+func TestEstimateEmpty(t *testing.T) {
+	if !(Estimate{Currency: "EUR"}).Empty() {
+		t.Error("Empty() = false for an estimate without instance types, want true")
+	}
+	e := Estimate{InstanceTypes: map[string]InstanceType{"Standard_D4s_v5": {PricePerHour: 0.21}}}
+	if e.Empty() {
+		t.Error("Empty() = true for an estimate with an instance type, want false")
+	}
+}
+
 // write saves content to a temporary file and returns its path.
 func write(t *testing.T, content string) string {
 	t.Helper()
