@@ -49,4 +49,18 @@ can be run again at any time. Everything it produces goes to `out/` (`OUT`
 overrides it): the snapshot, the text and JSON reports with their exit codes,
 the logs of `kubectl drain` and where the pods of `web` ended up.
 
-Delete the cluster afterwards with `kind delete cluster --name drainsim-basic`.
+The script never touches `~/.kube/config`: it sets
+`KUBECONFIG=out/kind.kubeconfig`, so kind writes the admin credentials of the
+cluster there. To look at the cluster yourself while it runs, use the same
+file:
+
+```bash
+kubectl --kubeconfig test/scenarios/basic/out/kind.kubeconfig get pods -A
+```
+
+Delete the cluster afterwards with the same kubeconfig, so kind does not
+look for it in `~/.kube/config`:
+
+```bash
+KUBECONFIG=test/scenarios/basic/out/kind.kubeconfig kind delete cluster --name drainsim-basic
+```
