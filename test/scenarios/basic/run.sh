@@ -31,3 +31,8 @@ if [[ -z "${DRAINSIM:-}" ]]; then
   DRAINSIM="$OUT/drainsim"
 fi
 
+# --- 1. cluster and workload -------------------------------------------------
+log "creating cluster $CLUSTER"
+kind delete cluster --name "$CLUSTER" >/dev/null 2>&1 || true
+kind create cluster --name "$CLUSTER" --config "$HERE/kind.yaml" --wait 120s
+
