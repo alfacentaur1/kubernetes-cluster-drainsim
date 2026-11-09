@@ -39,10 +39,10 @@ go vet ./...
 go test ./...         # tests use the real scheduler framework; they take a while
 go build -o drainsim ./cmd/drainsim
 
-./drainsim snapshot -o cluster.json [--kubeconfig F] [--context C]
+./drainsim snapshot -o cluster.json [--kubeconfig F] [--context C] [--prometheus URL [--usage-window 7d]]
 ./drainsim drain cluster.json [--nodes a,b | --selector k=v] [--strategy greedy|backtracking] [--max-attempts N] [--format text|json]
 ./drainsim policy cluster.json --config drainsim.yaml [--nodes … | --selector …] [--format …]
-./drainsim consolidate cluster.json [--config drainsim.yaml] [--nodes … | --selector …] [--format …]
+./drainsim consolidate cluster.json [--config drainsim.yaml] [--right-size] [--nodes … | --selector …] [--format …]
 ```
 
 `examples/drainsim.yaml` is a full configuration (policy targets, Azure
@@ -211,15 +211,14 @@ Rules that keep the code aligned with the diagrams:
 | M4 report + `drain` command | done (report tests pending) |
 | M5 drain order search: greedy, backtracking, `--strategy`, `--max-attempts` | done |
 | M6 policy impact: config, running-pod check, Alg. 5.4, `policy` command | done |
-| M7 consolidation (Alg. 5.3), lower bound, cost/CO₂ estimator, `consolidate` command, example configuration, usage profiles + Prometheus collector (FR20) | in progress (right-sizing open) |
+| M7 consolidation (Alg. 5.3), lower bound, cost/CO₂ estimator, `consolidate` command, example configuration, usage profiles + Prometheus collector (FR20), right-sizing `--right-size` (FR21–FR23) | done (kind check of `--prometheus` pending) |
 | M8 scenario clusters (kind) P1–S3, RQ1 comparison with real drains, benchmarks (NFR9), CI | started: `test/scenarios/basic` (PDB, two workers) matches real drains |
 
-Next steps in M7:
-1. Right-sizing (FR21–FR23): engine method to replace container requests
-   (ISimulation: "replace the requests of containers") with the usage
-   profiles (`engine.Simulation.UsageProfiles`), then consolidate again.
-2. Check `snapshot --prometheus` on a kind cluster with kube-prometheus
-   (the collector is tested only against a fake Prometheus).
+Next steps:
+1. Check `snapshot --prometheus` and `consolidate --right-size` on a kind
+   cluster with kube-prometheus (the collector is tested only against a
+   fake Prometheus).
+2. M8: scenario clusters P1–S3 and the RQ1 comparison with real drains.
 
 Known open items: Fig 5.4 still lacks the "refused pods → drain fails" branch
 (diagram only); `examples/drainsim.yaml` has no embodied emissions, because
