@@ -1,4 +1,8 @@
 # simulation of cluster RBAC e.g. Azure AKS
+#
+# Prometheus (drainsim snapshot --prometheus URL, FR20) is not covered by this
+# role: drainsim only sends GET /api/v1/query to it, so read access to the
+# Prometheus query API is all it needs (NFR1).
 apiVersion: v1
 kind: ServiceAccount
 metadata:
