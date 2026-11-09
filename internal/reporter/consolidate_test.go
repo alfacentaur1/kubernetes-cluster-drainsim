@@ -240,3 +240,17 @@ func TestConsolidateWithoutRightSizing(t *testing.T) {
 		t.Errorf("JSON contains rightSizing without --right-size")
 	}
 }
+
+// Empty lists are [] in the JSON report, not null, so a script can iterate
+// over them (found in scenario F1, where jq failed on "removed": null).
+func TestConsolidateJSONEmptyListsAreArrays(t *testing.T) {
+	empty := consolidation.Result{Nodes: []string{"node-a"}, LowerBound: 1}
+	var buf bytes.Buffer
+	if err := JSON(&buf, ConsolidateRightSized(empty, empty, nil, 0.15, "", 0, now)); err != nil {
+		t.Fatal(err)
+	}
+	out := buf.String()
+	if strings.Contains(out, "null") {
+		t.Errorf("JSON report contains null:\n%s", out)
+	}
+}

@@ -68,8 +68,8 @@ type Total struct {
 // code is 0 (Section 5.7).
 func Consolidate(res consolidation.Result, currency string, hours float64, now time.Time) Report {
 	c := &Consolidation{
-		Removed:    res.Removed,
-		Kept:       res.Kept,
+		Removed:    nonNil(res.Removed),
+		Kept:       nonNil(res.Kept),
 		LowerBound: res.LowerBound,
 		Savings:    res.Savings,
 		Currency:   currency,
@@ -84,8 +84,8 @@ func Consolidate(res consolidation.Result, currency string, hours float64, now t
 		Passed:        true,
 		Summary:       consolidateSummary(len(res.Nodes), c),
 		Order:         res.Nodes,
-		Drained:       res.Removed,
-		Steps:         steps(res.Events),
+		Drained:       nonNil(res.Removed),
+		Steps:         nonNil(steps(res.Events)),
 		Snapshot:      snapshotInfo(res.Info, now),
 		Nodes:         res.Nodes,
 		Consolidation: c,
@@ -135,7 +135,7 @@ func ConsolidateRightSized(before, after consolidation.Result, recs []consolidat
 	c.RightSizing = &RightSizing{
 		MemoryMargin:    margin,
 		Recommendations: recs,
-		Current:         Outcome{Removed: before.Removed, Kept: before.Kept, LowerBound: before.LowerBound},
+		Current:         Outcome{Removed: nonNil(before.Removed), Kept: nonNil(before.Kept), LowerBound: before.LowerBound},
 	}
 	r.Summary = rightSizedSummary(len(after.Nodes), len(before.Removed), c)
 	return r
@@ -205,4 +205,13 @@ func plural(n int, one, many string) string {
 		return fmt.Sprintf("%d %s", n, one)
 	}
 	return fmt.Sprintf("%d %s", n, many)
+}
+
+// nonNil returns s, or an empty slice if s is nil, so that the JSON report
+// has [] instead of null and tools such as jq can iterate over it.
+func nonNil[T any](s []T) []T {
+	if s == nil {
+		return []T{}
+	}
+	return s
 }
