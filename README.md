@@ -36,6 +36,9 @@ drainsim drain cluster.json
 # Q2: how many nodes are needed, and what does the surplus cost?
 drainsim consolidate cluster.json
 
+# ... and how many after the requests are right-sized from the usage (FR23)
+drainsim consolidate cluster.json --right-size --config drainsim.yaml
+
 # Q3: does a stricter Pod Security level break the next drain?
 drainsim policy cluster.json
 ```
@@ -57,6 +60,17 @@ the maximum working-set memory over the window, assigned to its workload
 nothing owns it) through `kube_pod_owner`. A workload gets the maximum over
 its pods. Prometheus must scrape cAdvisor (`container_*` metrics) and
 kube-state-metrics. A failed query fails the snapshot (exit code `2`).
+
+### Right-sizing
+
+`drainsim consolidate --right-size` needs a snapshot with usage profiles. It
+runs the consolidation twice from the same state: with the current requests,
+and with requests set to the 95th percentile of CPU and the maximum memory
+plus `rightSizing.memoryMargin` (default `0.15`, the buffer of KRR). Requests
+are at least `1m` and `1Mi`, never above the container's limit, and
+containers without usage data keep theirs. The report lists every
+recommendation and compares the removable nodes and the lower bound of both
+runs; the savings are those after right-sizing.
 
 Exit codes: `0` success, `1` the analysed change would fail, `2` usage or input error.
 
