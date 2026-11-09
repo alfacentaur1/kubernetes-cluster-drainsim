@@ -314,3 +314,70 @@ same moment as the objects.
 
 **Alternatives:** Grouping by owner only, as first sketched (loses ownerless
 pods); a separate query for ownerless pods (a third query for a rare case).
+
+## 2026-11-09 — Right-sizing: margin, minimum requests and capping at the limit
+
+**Decision:** The right-sized CPU request is the 95th percentile of usage,
+the memory request the maximum times `1 + rightSizing.memoryMargin`, with
+the margin 0.15 by default. CPU is rounded up to whole millicores, memory up
+to whole Mi. A request is at least 1m CPU and 1 Mi memory. If the container
+has a limit below the recommendation, the limit is used and the
+recommendation is marked `capped`. A container of a profiled workload
+without usage data keeps its requests (`noData`); a workload without a
+profile is not changed at all. The current requests are read from the first
+running pod of the workload (pods sorted by name).
+
+**Reason:** FR21 and FR22 name the 95th percentile and the maximum with a
+margin; 0.15 is the default buffer of KRR (Section 2.10), so the result is
+comparable with a tool operators know. Rounding up never recommends less
+than was measured; whole Mi keep the report readable. A zero request would
+remove the request and change the QoS class of the pod (Guaranteed or
+Burstable to BestEffort), which changes eviction order on the node and is
+not what right-sizing means. The API server rejects a request above its
+limit, so a higher recommendation could never be applied; the flag tells the
+operator that the limit, not the usage, decided. Section 5.5 says
+containers without data keep their requests.
+
+**Alternatives:** Margin 0 (a container at its maximum would be killed at
+its first new peak); a margin for CPU too (CPU is throttled, not killed, and
+FR21 uses the percentile alone); raising the limit together with the
+request (changes the behaviour of the workload, beyond what the simulation
+should decide).
+
+## 2026-11-09 — DaemonSet pods are right-sized too
+
+**Decision:** The right-sizing changes the requests of every workload with
+a usage profile, including DaemonSets. Their pods stay on their nodes during
+a drain and disappear with a removed node, but their right-sized requests
+change the free capacity of every remaining node.
+
+**Reason:** A DaemonSet reserves its requests on every node (Section 5.5,
+the lower bound counts them on each node), so it is often the largest
+reservation that right-sizing can reduce. Leaving it out would understate
+what right-sizing frees and make the comparison of FR23 inconsistent with
+how the scheduler counts capacity.
+
+**Alternatives:** Right-sizing only workloads that move during a drain
+(ignores the capacity DaemonSets hold on the nodes that stay).
+
+## 2026-11-09 — consolidate --right-size reports the right-sized run as the main result
+
+**Decision:** `drainsim consolidate --right-size` runs Algorithm 5.3 twice
+from the same checkpoint: first with the requests of the snapshot, then,
+after `Restore` and `Apply`, with the right-sized requests. The main fields
+of the report (removed, kept, lower bound, savings, steps) describe the
+second run; `consolidation.rightSizing` holds the recommendations and the
+removed nodes and lower bound of the first run. Without usage profiles in
+the snapshot, `--right-size` is an input error (exit code 2). The memory
+margin comes from `--config`, or the default without it.
+
+**Reason:** FR23 asks how many nodes are needed after right-sizing, and the
+savings that answer Q2 are those after right-sizing; the first run is the
+baseline to compare with. Restoring the checkpoint also restores the
+numbering of replacements, so both runs name replacements alike (NFR7).
+Silently running without profiles would report the same numbers twice and
+suggest that right-sizing frees nothing.
+
+**Alternatives:** Two full reports (duplicates the snapshot info and steps);
+reporting savings for both runs (the first run is already the plain
+`consolidate`).
