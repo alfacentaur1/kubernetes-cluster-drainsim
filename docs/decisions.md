@@ -381,3 +381,44 @@ suggest that right-sizing frees nothing.
 **Alternatives:** Two full reports (duplicates the snapshot info and steps);
 reporting savings for both runs (the first run is already the plain
 `consolidate`).
+
+## 2026-11-09 — Right-sizing changes the container status, as a rollout would
+
+**Decision:** `SetRequests` changes the requests of a container in the spec
+and, where present, in `status.containerStatuses[].allocatedResources` and
+`status.containerStatuses[].resources.requests` of every pod of the workload.
+Limits and the other fields of the status stay.
+
+**Reason:** Found in scenario F1 on kind: running pods of Kubernetes 1.36
+report their requests in the container status, and since in-place pod
+resize the scheduler counts the larger of spec and status. With only the
+spec changed, the old 800m still filled the nodes and no node could be
+removed, although the right-sized pods fit. Right-sizing in a real cluster
+(`kubectl set resources`) rolls out new pods whose status reports the new
+requests (FR23), so the simulated pods must look like them.
+
+**Alternatives:** Clearing the status resources (the scheduler would fall
+back to the spec, but the pods would look unlike real running pods);
+simulating the rollout with new pod names (changes the names in the report
+without changing the result).
+
+## 2026-11-09 — Scenario F1 uses a 15-minute usage window
+
+**Decision:** The kind scenario `test/scenarios/f1` takes the snapshot
+with `--usage-window 15m` after the workloads have run for 16 minutes, and
+its real counterpart applies the recommendations with `kubectl set
+resources` to every Deployment, StatefulSet and DaemonSet. Static pods
+(`kind: Node`, only on the control plane) keep their requests in the real
+cluster, while the simulation right-sizes them too.
+
+**Reason:** The workloads of the scenario have a constant load, so 15
+minutes give the same percentile as a week (FR20) and keep the scenario
+reproducible in minutes (NFR20). Static pods are defined by files on the
+node and cannot be changed through the API; they run only on the control
+plane, which is not a candidate, so the difference does not change which
+workers can be removed.
+
+**Alternatives:** The default window of 7 days (impractical for a test);
+right-sizing only the namespace of the scenario in the real cluster (the
+simulation also lowers kindnet on every worker, so the capacities would
+differ).
