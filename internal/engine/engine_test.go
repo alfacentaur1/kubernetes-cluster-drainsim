@@ -397,3 +397,31 @@ func TestSetRequestsReachesReplacements(t *testing.T) {
 	}
 	wantKinds(t, log, eventlog.Cordoned, eventlog.Evicted, eventlog.Placed, eventlog.NodeDrained)
 }
+
+// TestSetRequestsFreesCapacityOfRunningPod reproduces scenario F1 on kind
+// with the real scheduler: the filler on node-b reports its 1950m also in
+// its container status, as running pods of Kubernetes 1.36 do. After it is
+// right-sized to 100m, the pod from node-a must fit on node-b.
+func TestSetRequestsFreesCapacityOfRunningPod(t *testing.T) {
+	web := runningPod("web-rs-aaaaa", owner("ReplicaSet", "web-rs"))
+	web.GenerateName = "web-rs-"
+	filler := runningPod("filler-rs-aaaaa", owner("ReplicaSet", "filler-rs"))
+	filler.Labels = map[string]string{"app": "filler"}
+	filler.Spec.NodeName = "node-b"
+	big := corev1.ResourceList{corev1.ResourceCPU: resource.MustParse("1950m"), corev1.ResourceMemory: resource.MustParse("64Mi")}
+	filler.Spec.Containers[0].Resources.Requests = big.DeepCopy()
+	filler.Status.ContainerStatuses = []corev1.ContainerStatus{{Name: "app", Ready: true,
+		AllocatedResources: big.DeepCopy(), Resources: &corev1.ResourceRequirements{Requests: big.DeepCopy()}}}
+
+	e, log, _ := newEngine(t, &snapshot.Snapshot{
+		Nodes: []corev1.Node{node("node-a"), node("node-b")},
+		Pods:  []corev1.Pod{web, filler},
+	}, nil)
+
+	e.SetRequests("default", "ReplicaSet", "filler-rs", "app",
+		corev1.ResourceList{corev1.ResourceCPU: resource.MustParse("100m")})
+	if _, err := e.Drain(context.Background(), []string{"node-a"}); err != nil {
+		t.Fatalf("Drain() error = %v", err)
+	}
+	wantKinds(t, log, eventlog.Cordoned, eventlog.Evicted, eventlog.Placed, eventlog.NodeDrained)
+}
