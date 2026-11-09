@@ -337,3 +337,63 @@ func TestUsageProfilesAreImmutable(t *testing.T) {
 		t.Errorf("UsageProfiles() = %+v, want %+v", got, want)
 	}
 }
+
+// TestSetRequestsReachesReplacements checks FR23: after SetRequests the
+// replacement of an evicted pod has the new requests, so it no longer fits
+// where the old pod would have fitted, and Restore brings the old requests
+// back. node-b has 150m free next to a 1850m filler.
+func TestSetRequestsReachesReplacements(t *testing.T) {
+	web := runningPod("web-rs-aaaaa", owner("ReplicaSet", "web-rs"))
+	web.GenerateName = "web-rs-"
+	web.Spec.Containers[0].Resources.Limits = corev1.ResourceList{corev1.ResourceCPU: resource.MustParse("1")}
+	filler := runningPod("filler-rs-aaaaa", owner("ReplicaSet", "filler-rs"))
+	filler.Labels = map[string]string{"app": "filler"}
+	filler.Spec.NodeName = "node-b"
+	filler.Spec.Containers[0].Resources.Requests[corev1.ResourceCPU] = resource.MustParse("1850m")
+
+	e, log, _ := newEngine(t, &snapshot.Snapshot{
+		Nodes: []corev1.Node{node("node-a"), node("node-b")},
+		Pods:  []corev1.Pod{web, filler},
+	}, nil)
+	cp := e.Save()
+
+	req := e.WorkloadRequests("default", "ReplicaSet", "web-rs")
+	app := req["app"]
+	if got := app.Cpu().String(); got != "100m" {
+		t.Fatalf("WorkloadRequests()[app] CPU = %s, want 100m", got)
+	}
+	limits := e.WorkloadLimits("default", "ReplicaSet", "web-rs")["app"]
+	if got := limits.Cpu().String(); got != "1" {
+		t.Errorf("WorkloadLimits()[app] CPU = %s, want 1", got)
+	}
+	req["app"][corev1.ResourceCPU] = resource.MustParse("5") // a copy; must not reach the engine
+	again := e.WorkloadRequests("default", "ReplicaSet", "web-rs")["app"]
+	if got := again.Cpu().String(); got != "100m" {
+		t.Errorf("WorkloadRequests()[app] CPU after changing a copy = %s, want 100m", got)
+	}
+	if e.WorkloadRequests("none", "Deployment", "x") != nil {
+		t.Errorf("WorkloadRequests() of an unknown workload is not nil")
+	}
+
+	if n := e.SetRequests("default", "ReplicaSet", "web-rs", "app",
+		corev1.ResourceList{corev1.ResourceCPU: resource.MustParse("500m")}); n != 1 {
+		t.Fatalf("SetRequests() = %d, want 1", n)
+	}
+	if _, err := e.Drain(context.Background(), []string{"node-a"}); err != nil {
+		t.Fatalf("Drain() error = %v", err)
+	}
+	wantKinds(t, log, eventlog.Cordoned, eventlog.Evicted, eventlog.Pending, eventlog.NodeDrained)
+
+	e.Restore(cp)
+	e.Detach(log)
+	log = &eventlog.Log{}
+	e.Attach(log)
+	restored := e.WorkloadRequests("default", "ReplicaSet", "web-rs")["app"]
+	if got := restored.Cpu().String(); got != "100m" {
+		t.Errorf("CPU after Restore = %s, want 100m", got)
+	}
+	if _, err := e.Drain(context.Background(), []string{"node-a"}); err != nil {
+		t.Fatalf("Drain() error = %v", err)
+	}
+	wantKinds(t, log, eventlog.Cordoned, eventlog.Evicted, eventlog.Placed, eventlog.NodeDrained)
+}
