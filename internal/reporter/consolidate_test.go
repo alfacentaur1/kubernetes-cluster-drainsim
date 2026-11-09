@@ -153,3 +153,90 @@ func render(t *testing.T, r Report) string {
 	}
 	return b.String()
 }
+
+// With --right-size the summary compares the consolidation with the current
+// and the right-sized requests, and the text lists the recommendations
+// (FR21–FR23, Section 5.5).
+func TestConsolidateRightSized(t *testing.T) {
+	before := result()
+	before.Removed = []string{"node-a"}
+	before.Kept = []consolidation.Kept{{Node: "node-b", Reason: "replacement default/web-sim0 would stay pending: no node fits"}}
+	before.LowerBound = 4
+	after := result()
+	after.Removed = []string{"node-a", "node-b", "node-c"}
+	after.LowerBound = 2
+	after.Savings = nil
+	recs := []consolidation.Recommendation{
+		{Namespace: "shop", Kind: "Deployment", Name: "web", Container: "app",
+			CurrentCPUMillicores: 500, CurrentMemoryBytes: 64 << 20,
+			RecommendedCPUMillicores: 251, RecommendedMemoryBytes: 110 << 20, Higher: true},
+		{Namespace: "shop", Kind: "Deployment", Name: "web", Container: "proxy",
+			CurrentCPUMillicores: 300, RecommendedCPUMillicores: 200, RecommendedMemoryBytes: 1 << 20, Capped: true},
+		{Namespace: "shop", Kind: "Deployment", Name: "web", Container: "sidecar",
+			CurrentCPUMillicores: 50, RecommendedCPUMillicores: 50, NoData: true},
+	}
+
+	rep := ConsolidateRightSized(before, after, recs, 0.15, "", 0, now)
+
+	want := "With the current requests 1 of 5 nodes can be removed; with right-sized requests 3 " +
+		"(at least 2 nodes are needed). The savings are unknown: the configuration has no estimate."
+	if rep.Summary != want {
+		t.Errorf("Summary =\n  %q\nwant\n  %q", rep.Summary, want)
+	}
+	if !rep.Passed || len(rep.Consolidation.Removed) != 3 {
+		t.Errorf("Passed, Removed = %v, %v, want true and the 3 nodes of after", rep.Passed, rep.Consolidation.Removed)
+	}
+
+	text := render(t, rep)
+	for _, w := range []string{
+		"Right-sized requests (CPU p95, memory max + 15 %):\n",
+		"  shop/Deployment web, container app: CPU 500m → 251m, memory 64Mi → 110Mi (higher: uses more than it requests)\n",
+		"  shop/Deployment web, container proxy: CPU 300m → 200m, memory none → 1Mi (capped at the limit)\n",
+		"  shop/Deployment web, container sidecar: no usage data, keeps CPU 50m, memory none\n",
+		"With the current requests:\nRemovable nodes, in order: node-a\nLower bound: at least 4 nodes are needed\n",
+		"With right-sized requests:\nRemovable nodes, in order: node-a, node-b, node-c\n",
+	} {
+		if !strings.Contains(text, w) {
+			t.Errorf("Text() =\n%s\nwant substring %q", text, w)
+		}
+	}
+
+	var buf bytes.Buffer
+	if err := JSON(&buf, rep); err != nil {
+		t.Fatal(err)
+	}
+	var got struct {
+		Consolidation struct {
+			RightSizing struct {
+				MemoryMargin    float64 `json:"memoryMargin"`
+				Recommendations []struct {
+					Container string `json:"container"`
+					NoData    bool   `json:"noData"`
+				} `json:"recommendations"`
+				Current struct {
+					Removed    []string `json:"removed"`
+					LowerBound int      `json:"lowerBound"`
+				} `json:"current"`
+			} `json:"rightSizing"`
+		} `json:"consolidation"`
+	}
+	if err := json.Unmarshal(buf.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	rs := got.Consolidation.RightSizing
+	if rs.MemoryMargin != 0.15 || len(rs.Recommendations) != 3 || !rs.Recommendations[2].NoData ||
+		len(rs.Current.Removed) != 1 || rs.Current.LowerBound != 4 {
+		t.Errorf("rightSizing = %+v", rs)
+	}
+}
+
+// Without --right-size the report has no rightSizing section.
+func TestConsolidateWithoutRightSizing(t *testing.T) {
+	var buf bytes.Buffer
+	if err := JSON(&buf, Consolidate(result(), "EUR", 730, now)); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(buf.String(), "rightSizing") {
+		t.Errorf("JSON contains rightSizing without --right-size")
+	}
+}
