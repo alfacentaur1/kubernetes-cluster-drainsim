@@ -6,6 +6,8 @@ import (
 	"io"
 	"strings"
 	"time"
+
+	"k8s.io/apimachinery/pkg/api/resource"
 )
 
 // JSON writes the report as indented JSON (FR34). The field formatVersion
@@ -159,6 +161,10 @@ func writePolicy(b *strings.Builder, p *PolicyImpact) {
 // writeConsolidation writes the removable nodes, the kept nodes with their
 // reasons, the lower bound and the savings per node and in total (UC10–UC12).
 func writeConsolidation(b *strings.Builder, c *Consolidation) {
+	if rs := c.RightSizing; rs != nil {
+		writeRightSizing(b, rs)
+		b.WriteString("\nWith right-sized requests:") // the next line starts with a newline
+	}
 	if len(c.Removed) > 0 {
 		fmt.Fprintf(b, "\nRemovable nodes, in order: %s\n", strings.Join(c.Removed, ", "))
 	} else {
@@ -193,6 +199,59 @@ func writeConsolidation(b *strings.Builder, c *Consolidation) {
 			plural(t.MoneyUnknown, "node", "nodes"), plural(t.CO2Unknown, "node", "nodes"))
 	}
 	b.WriteString("\n")
+}
+
+// writeRightSizing writes the recommended requests and the consolidation
+// with the current requests (FR21–FR23).
+func writeRightSizing(b *strings.Builder, rs *RightSizing) {
+	fmt.Fprintf(b, "\nRight-sized requests (CPU p95, memory max + %g %%):\n", rs.MemoryMargin*100)
+	if len(rs.Recommendations) == 0 {
+		b.WriteString("  none: no running workload has usage data\n")
+	}
+	for _, r := range rs.Recommendations {
+		fmt.Fprintf(b, "  %s/%s %s, container %s: ", r.Namespace, r.Kind, r.Name, r.Container)
+		if r.NoData {
+			fmt.Fprintf(b, "no usage data, keeps CPU %s, memory %s\n",
+				cpuText(r.CurrentCPUMillicores), memoryText(r.CurrentMemoryBytes))
+			continue
+		}
+		fmt.Fprintf(b, "CPU %s → %s, memory %s → %s",
+			cpuText(r.CurrentCPUMillicores), cpuText(r.RecommendedCPUMillicores),
+			memoryText(r.CurrentMemoryBytes), memoryText(r.RecommendedMemoryBytes))
+		if r.Higher {
+			b.WriteString(" (higher: uses more than it requests)")
+		}
+		if r.Capped {
+			b.WriteString(" (capped at the limit)")
+		}
+		b.WriteString("\n")
+	}
+
+	cur := rs.Current
+	b.WriteString("\nWith the current requests:\n")
+	if len(cur.Removed) > 0 {
+		fmt.Fprintf(b, "Removable nodes, in order: %s\n", strings.Join(cur.Removed, ", "))
+	} else {
+		b.WriteString("Removable nodes: none\n")
+	}
+	fmt.Fprintf(b, "Lower bound: at least %s needed\n", plural(cur.LowerBound, "node is", "nodes are"))
+}
+
+// cpuText formats millicores as a Kubernetes quantity, e.g. "250m", or
+// "none" for no request.
+func cpuText(millicores int64) string {
+	if millicores == 0 {
+		return "none"
+	}
+	return resource.NewMilliQuantity(millicores, resource.DecimalSI).String()
+}
+
+// memoryText formats bytes as a Kubernetes quantity, e.g. "110Mi", or "none".
+func memoryText(bytes int64) string {
+	if bytes == 0 {
+		return "none"
+	}
+	return resource.NewQuantity(bytes, resource.BinarySI).String()
 }
 
 // moneyText formats a money saving, or "money unknown".
