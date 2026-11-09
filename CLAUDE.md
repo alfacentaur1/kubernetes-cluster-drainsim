@@ -211,16 +211,15 @@ Rules that keep the code aligned with the diagrams:
 | M4 report + `drain` command | done (report tests pending) |
 | M5 drain order search: greedy, backtracking, `--strategy`, `--max-attempts` | done |
 | M6 policy impact: config, running-pod check, Alg. 5.4, `policy` command | done |
-| M7 consolidation (Alg. 5.3), lower bound, cost/CO₂ estimator, `consolidate` command, example configuration | in progress (usage profiles and right-sizing open) |
+| M7 consolidation (Alg. 5.3), lower bound, cost/CO₂ estimator, `consolidate` command, example configuration, usage profiles + Prometheus collector (FR20) | in progress (right-sizing open) |
 | M8 scenario clusters (kind) P1–S3, RQ1 comparison with real drains, benchmarks (NFR9), CI | started: `test/scenarios/basic` (PDB, two workers) matches real drains |
 
-Next steps in M7, in this order:
-1. Usage profiles per workload and container in the snapshot (Fig 5.2).
-2. Collector: read usage from Prometheus (FR20) — p95 CPU and max memory per
-   container, assigned to the workload via `kube_pod_owner`; develop against a
-   fake Prometheus (`httptest`).
-3. Right-sizing (FR21–FR23): engine method to replace container requests
-   (ISimulation: "replace the requests of containers"), then consolidate again.
+Next steps in M7:
+1. Right-sizing (FR21–FR23): engine method to replace container requests
+   (ISimulation: "replace the requests of containers") with the usage
+   profiles (`engine.Simulation.UsageProfiles`), then consolidate again.
+2. Check `snapshot --prometheus` on a kind cluster with kube-prometheus
+   (the collector is tested only against a fake Prometheus).
 
 Known open items: Fig 5.4 still lacks the "refused pods → drain fails" branch
 (diagram only); `examples/drainsim.yaml` has no embodied emissions, because
