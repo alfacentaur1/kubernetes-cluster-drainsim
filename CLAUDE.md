@@ -68,6 +68,8 @@ change is done. `go build` does not compile `_test.go` files.
 - **Node image for scenarios: `kindest/node:v1.36.4`** with the digest from the
   kind v0.33.0 release notes (the newest 1.36 image; the libraries are pinned
   to v1.36.5, same minor).
+- **Helm v3.22.1 is in `~/.local/bin` in WSL** (for kube-prometheus-stack in
+  `test/scenarios/f1`). jq in WSL is 1.5: no `IN()` and other newer builtins.
 - **Scenario tests live in `test/scenarios/<name>/run.sh`**, with `kind.yaml`,
   the manifests and a `README.md` next to it. Each script recreates its own
   cluster and writes to `out/` (ignored by git). Delete the cluster when done:
@@ -211,14 +213,12 @@ Rules that keep the code aligned with the diagrams:
 | M4 report + `drain` command | done (report tests pending) |
 | M5 drain order search: greedy, backtracking, `--strategy`, `--max-attempts` | done |
 | M6 policy impact: config, running-pod check, Alg. 5.4, `policy` command | done |
-| M7 consolidation (Alg. 5.3), lower bound, cost/CO₂ estimator, `consolidate` command, example configuration, usage profiles + Prometheus collector (FR20), right-sizing `--right-size` (FR21–FR23) | done (kind check of `--prometheus` pending) |
-| M8 scenario clusters (kind) P1–S3, RQ1 comparison with real drains, benchmarks (NFR9), CI | started: `test/scenarios/basic` (PDB, two workers) matches real drains |
+| M7 consolidation (Alg. 5.3), lower bound, cost/CO₂ estimator, `consolidate` command, example configuration, usage profiles + Prometheus collector (FR20), right-sizing `--right-size` (FR21–FR23) | done |
+| M8 scenario clusters (kind) P1–S3, RQ1 comparison with real drains, benchmarks (NFR9), CI | started: `test/scenarios/basic` (PDB, two workers) and `test/scenarios/f1` (right-sizing with Prometheus) match real drains |
 
 Next steps:
-1. Check `snapshot --prometheus` and `consolidate --right-size` on a kind
-   cluster with kube-prometheus (the collector is tested only against a
-   fake Prometheus).
-2. M8: scenario clusters P1–S3 and the RQ1 comparison with real drains.
+1. M8: the remaining scenario clusters (P1–P10, F2–F3, S1–S3) and the RQ1
+   comparison with real drains.
 
 Known open items: Fig 5.4 still lacks the "refused pods → drain fails" branch
 (diagram only); `examples/drainsim.yaml` has no embodied emissions, because
