@@ -249,3 +249,68 @@ unavailable, so the removable nodes must be found without them (Section 5.5).
 **Alternatives:** Exit code 1 when no node can be removed (would mark a
 well-sized cluster as an error); requiring `--config` (would hide the answer
 to Q2 when no prices are at hand).
+
+## 2026-11-09 — Usage profiles are optional and keep the snapshot format version
+
+**Decision:** The snapshot gets an optional field `usageProfiles` (omitted
+when empty) holding one profile per workload: namespace, kind, name, the
+window, and per container the 95th percentile of CPU in millicores and the
+maximum working-set memory in bytes. `formatVersion` stays
+`drainsim.snapshot/v1`. The profiles are kept in the cluster state, outside
+the Memento, and returned as copies by `engine.Simulation.UsageProfiles`.
+
+**Reason:** Usage profiles are part of the snapshot data model (Figure 5.2)
+and are read from Prometheus (FR20), but Prometheus is optional: the
+consolidation works without them (Section 5.5). Adding an optional field
+leaves every older snapshot valid, so no version change is needed (FR4,
+NFR8). The profiles describe the measured past, which a simulated drain does
+not change.
+
+**Alternatives:** `drainsim.snapshot/v2` (would reject valid older snapshots
+for no gain); a separate usage file (a second artifact the analyses would
+have to keep in sync with the snapshot).
+
+## 2026-11-09 — A workload gets the maximum usage over its pods
+
+**Decision:** The collector assigns the usage of each container to the
+workload of its pod: the controller from `kube_pod_owner`, a ReplicaSet
+resolved to its Deployment with the ReplicaSets of the snapshot (the rule of
+`state.Workload`), and a pod without an owner as its own workload of kind
+`Pod`. When a workload has several pods (replicas, or pods replaced during
+the window), each container gets the maximum over the pods, both for CPU
+p95 and memory. Values are rounded up to whole millicores and bytes;
+samples that are NaN or infinite are skipped.
+
+**Reason:** The right-sizing sets one request for all pods of a workload
+(FR21, FR22), because they share their template. Taking the maximum means a
+right-sized request covers every replica, including the busiest one, so the
+simulation never assumes less than any pod used. Rounding up keeps this
+property. `max_over_time(kube_pod_owner[W])` keeps pods that no longer
+exist, so a rollout during the window does not lose usage.
+
+**Alternatives:** The mean or median over pods (would under-size the
+busiest replica and could hide a placement failure); a percentile over all
+samples of all pods pooled together (a heavier query with no clear gain for
+a conservative estimate).
+
+## 2026-11-09 — Usage queries are grouped by pod and use only controllers
+
+**Decision:** Both Prometheus queries group by `namespace, pod, owner_kind,
+owner_name, container` instead of only by the owner, and the maximum over
+the pods is taken in Go. `kube_pod_owner` is filtered with
+`owner_is_controller!="false"`. The queries are instant queries evaluated at
+the time of the snapshot (`time=createdAt`). The window is written in the
+syntax of Prometheus with the largest whole unit (`7d` → `168h`) and stored
+in the profile; `--usage-window` accepts Go durations and whole days (`7d`),
+at least `5m`.
+
+**Reason:** Pods without an owner all have `owner_name="<none>"`; grouping
+by the owner alone would merge them into one series and lose the pod name
+that identifies them as workloads of kind `Pod`. The ReplicaSet → Deployment
+step needs the snapshot anyway, so the last aggregation is done in Go. Only
+the controller owns a pod in the sense of `metav1.GetControllerOf`, which the
+rest of drainsim uses. Evaluating at `createdAt` makes the usage describe the
+same moment as the objects.
+
+**Alternatives:** Grouping by owner only, as first sketched (loses ownerless
+pods); a separate query for ownerless pods (a third query for a rare case).
