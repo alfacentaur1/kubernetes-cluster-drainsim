@@ -15,6 +15,7 @@ import (
 	"github.com/alfacentaur1/kubernetes-cluster-drainsim/internal/engine/replacement"
 	"github.com/alfacentaur1/kubernetes-cluster-drainsim/internal/engine/scheduler"
 	"github.com/alfacentaur1/kubernetes-cluster-drainsim/internal/engine/state"
+	"github.com/alfacentaur1/kubernetes-cluster-drainsim/internal/snapshot"
 	corev1 "k8s.io/api/core/v1"
 	resourcehelper "k8s.io/component-helpers/resource"
 )
@@ -78,6 +79,10 @@ type Simulation interface {
 	// Node returns a copy of the node, or nil if it does not exist. The
 	// consolidation passes it to the cost model (Section 5.5).
 	Node(name string) *corev1.Node
+	// UsageProfiles returns a copy of the measured usage of the workloads
+	// (Figure 5.2, FR20), sorted by namespace, kind and name; nil if the
+	// snapshot has none. The right-sizing uses it (FR21, FR22).
+	UsageProfiles() []snapshot.UsageProfile
 }
 
 // Result is the outcome of draining nodes in the given order. The drain stops
@@ -399,4 +404,10 @@ func (e *Engine) Node(name string) *corev1.Node {
 		return nil
 	}
 	return n.DeepCopy()
+}
+
+// UsageProfiles returns a copy of the usage profiles of the snapshot, or nil
+// if it has none (FR20). They never change during the simulation.
+func (e *Engine) UsageProfiles() []snapshot.UsageProfile {
+	return e.state.UsageProfiles()
 }
