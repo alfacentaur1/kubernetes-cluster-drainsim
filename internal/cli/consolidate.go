@@ -1,6 +1,8 @@
 package cli
 
 import (
+	"errors"
+
 	"github.com/alfacentaur1/kubernetes-cluster-drainsim/internal/analyses/consolidation"
 	"github.com/alfacentaur1/kubernetes-cluster-drainsim/internal/config"
 	"github.com/alfacentaur1/kubernetes-cluster-drainsim/internal/engine"
@@ -14,10 +16,11 @@ import (
 
 // consolidateOptions holds the flags of the consolidate command.
 type consolidateOptions struct {
-	config   string   // --config FILE: configuration with the estimate section (optional)
-	nodes    []string // --nodes a,b,c: candidate nodes
-	selector string   // --selector pool=blue: label selector of the candidate nodes
-	format   string   // --format text|json: format of the report
+	config    string   // --config FILE: configuration with the estimate section (optional)
+	nodes     []string // --nodes a,b,c: candidate nodes
+	selector  string   // --selector pool=blue: label selector of the candidate nodes
+	format    string   // --format text|json: format of the report
+	rightSize bool     // --right-size: consolidate again with right-sized requests (FR23)
 }
 
 // newConsolidateCommand creates the "consolidate" command, which finds the
@@ -41,6 +44,8 @@ func newConsolidateCommand(deps Deps) *cobra.Command {
 		"label selector of the candidate nodes, e.g. pool=blue")
 	cmd.Flags().StringVar(&opts.format, "format", "text",
 		"report format: text or json")
+	cmd.Flags().BoolVar(&opts.rightSize, "right-size", false,
+		"also consolidate with requests right-sized from the usage profiles (needs a snapshot taken with --prometheus)")
 	cmd.MarkFlagsMutuallyExclusive("nodes", "selector")
 	return cmd
 }
@@ -60,12 +65,14 @@ func runConsolidate(cmd *cobra.Command, deps Deps, path string, opts *consolidat
 		cost     consolidation.CostModel
 		currency string
 		hours    float64
+		margin   = config.DefaultMemoryMargin
 	)
 	if opts.config != "" {
 		cfg, err := config.Load(opts.config)
 		if err != nil {
 			return err
 		}
+		margin = cfg.RightSizing.Margin()
 		if !cfg.Estimate.Empty() {
 			cost = estimator.New(cfg.Estimate)
 			currency, hours = cfg.Estimate.Currency, cfg.Estimate.Period()
@@ -91,9 +98,30 @@ func runConsolidate(cmd *cobra.Command, deps Deps, path string, opts *consolidat
 	}
 	eng := engine.New(st, sched, policy)
 
+	if opts.rightSize && eng.UsageProfiles() == nil {
+		return errors.New("--right-size needs usage profiles, but the snapshot has none: " +
+			"take the snapshot with drainsim snapshot --prometheus URL")
+	}
+
+	start := eng.Save()
 	res, err := consolidation.Run(cmd.Context(), eng, nodes, cost)
 	if err != nil {
 		return err
 	}
-	return writeReport(cmd, opts.format, reporter.Consolidate(res, currency, hours, deps.now()))
+	if !opts.rightSize {
+		return writeReport(cmd, opts.format, reporter.Consolidate(res, currency, hours, deps.now()))
+	}
+
+	// FR23: consolidate again from the same checkpoint, with the requests
+	// right-sized from the usage. The checkpoint also restores the numbering
+	// of replacements, so both runs name them alike.
+	eng.Restore(start)
+	recs := consolidation.Recommend(eng, margin)
+	consolidation.Apply(eng, recs)
+	after, err := consolidation.Run(cmd.Context(), eng, nodes, cost)
+	if err != nil {
+		return err
+	}
+	return writeReport(cmd, opts.format,
+		reporter.ConsolidateRightSized(res, after, recs, margin, currency, hours, deps.now()))
 }
