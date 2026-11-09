@@ -407,16 +407,18 @@ without changing the result).
 **Decision:** The kind scenario `test/scenarios/f1` takes the snapshot
 with `--usage-window 15m` after the workloads have run for 16 minutes, and
 its real counterpart applies the recommendations with `kubectl set
-resources` to every Deployment, StatefulSet and DaemonSet. Static pods
-(`kind: Node`, only on the control plane) keep their requests in the real
-cluster, while the simulation right-sizes them too.
+resources` to every Deployment, StatefulSet and DaemonSet outside the
+namespace `monitoring`. Static pods (`kind: Node`) and the monitoring stack
+keep their requests in the real cluster, while the simulation right-sizes
+them too.
 
 **Reason:** The workloads of the scenario have a constant load, so 15
 minutes give the same percentile as a week (FR20) and keep the scenario
 reproducible in minutes (NFR20). Static pods are defined by files on the
-node and cannot be changed through the API; they run only on the control
-plane, which is not a candidate, so the difference does not change which
-workers can be removed.
+node and cannot be changed through the API, and the Prometheus operator
+would undo a change of its StatefulSet. Both run only on the control plane,
+which is not a candidate, so the difference does not change which workers
+can be removed.
 
 **Alternatives:** The default window of 7 days (impractical for a test);
 right-sizing only the namespace of the scenario in the real cluster (the
