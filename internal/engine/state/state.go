@@ -362,6 +362,13 @@ func (s *ClusterState) WorkloadPods(namespace, kind, name string) []*corev1.Pod 
 // copies of the evicted pods, so they inherit the new requests. The change
 // is part of the state, so Save and Restore cover it. It returns the number
 // of pods whose container was changed.
+//
+// The status of the container is changed too (allocatedResources and
+// resources.requests). Since in-place pod resize (Kubernetes 1.35), the
+// scheduler counts the larger of the requests in the spec and in the status,
+// so a pod with only its spec changed would still reserve the old requests.
+// In a real cluster the right-sized pods are new pods of a rollout, whose
+// status reports the new requests.
 func (s *ClusterState) SetRequests(namespace, kind, name, container string, req corev1.ResourceList) int {
 	changed := 0
 	for _, pod := range s.WorkloadPods(namespace, kind, name) {
@@ -370,14 +377,33 @@ func (s *ClusterState) SetRequests(namespace, kind, name, container string, req 
 			if c.Name != container {
 				continue
 			}
-			if c.Resources.Requests == nil {
-				c.Resources.Requests = corev1.ResourceList{}
-			}
-			for r, q := range req {
-				c.Resources.Requests[r] = q.DeepCopy()
-			}
+			c.Resources.Requests = withRequests(c.Resources.Requests, req)
 			changed++
+		}
+		for i := range pod.Status.ContainerStatuses {
+			cs := &pod.Status.ContainerStatuses[i]
+			if cs.Name != container {
+				continue
+			}
+			if cs.AllocatedResources != nil {
+				cs.AllocatedResources = withRequests(cs.AllocatedResources, req)
+			}
+			if cs.Resources != nil {
+				cs.Resources.Requests = withRequests(cs.Resources.Requests, req)
+			}
 		}
 	}
 	return changed
+}
+
+// withRequests returns list with the resources of req set to copies of
+// their values; list may be nil.
+func withRequests(list, req corev1.ResourceList) corev1.ResourceList {
+	if list == nil {
+		list = corev1.ResourceList{}
+	}
+	for r, q := range req {
+		list[r] = q.DeepCopy()
+	}
+	return list
 }

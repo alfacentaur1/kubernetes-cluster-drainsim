@@ -9,6 +9,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	resourcehelper "k8s.io/component-helpers/resource"
 )
 
 func pod(namespace, name, nodeName string, phase corev1.PodPhase) corev1.Pod {
@@ -150,5 +151,40 @@ func TestSetRequests(t *testing.T) {
 	}
 	if n := s.SetRequests("shop", "Deployment", "web", "missing", req); n != 0 {
 		t.Errorf("SetRequests() for an unknown container = %d, want 0", n)
+	}
+}
+
+// TestSetRequestsUpdatesContainerStatus reproduces scenario F1 on kind: a
+// running pod reports its requests in status.containerStatuses
+// (allocatedResources and resources.requests, the shape the API server of
+// Kubernetes 1.36 returns). SetRequests must change them too, because the
+// scheduler counts the larger of spec and status.
+func TestSetRequestsUpdatesContainerStatus(t *testing.T) {
+	isController := true
+	old := corev1.ResourceList{corev1.ResourceCPU: resource.MustParse("800m"), corev1.ResourceMemory: resource.MustParse("512Mi")}
+	p := pod("shop", "over-a-588fcd96bb-42ljv", "node-a", corev1.PodRunning)
+	p.OwnerReferences = []metav1.OwnerReference{{Kind: "ReplicaSet", Name: "over-a-588fcd96bb", Controller: &isController}}
+	p.Spec.Containers = []corev1.Container{{Name: "app", Resources: corev1.ResourceRequirements{Requests: old.DeepCopy()}}}
+	p.Status.ContainerStatuses = []corev1.ContainerStatus{{
+		Name:               "app",
+		AllocatedResources: old.DeepCopy(),
+		Resources:          &corev1.ResourceRequirements{Requests: old.DeepCopy()},
+	}}
+	s := New(&snapshot.Snapshot{Pods: []corev1.Pod{p}})
+
+	req := corev1.ResourceList{corev1.ResourceCPU: resource.MustParse("51m"), corev1.ResourceMemory: resource.MustParse("74Mi")}
+	if n := s.SetRequests("shop", "ReplicaSet", "over-a-588fcd96bb", "app", req); n != 1 {
+		t.Fatalf("SetRequests() = %d, want 1", n)
+	}
+
+	got := s.WorkloadPods("shop", "ReplicaSet", "over-a-588fcd96bb")[0]
+	opts := resourcehelper.PodResourcesOptions{UseStatusResources: true} // as the scheduler counts
+	r := resourcehelper.PodRequests(got, opts)
+	if r.Cpu().String() != "51m" || r.Memory().String() != "74Mi" {
+		t.Errorf("requests counted with the status = %v, want 51m and 74Mi", r)
+	}
+	cs := got.Status.ContainerStatuses[0]
+	if cs.AllocatedResources.Cpu().String() != "51m" || cs.Resources.Requests.Cpu().String() != "51m" {
+		t.Errorf("container status = %+v, want 51m in allocatedResources and resources", cs)
 	}
 }
