@@ -338,3 +338,46 @@ func (s *ClusterState) RemoveNode(name string) error {
 	delete(s.nodes, name)
 	return nil
 }
+
+// WorkloadPods returns the pods of the workload, by the rule of Workload,
+// sorted by name. Pending replacements are included. The returned pods are
+// the ones stored in the state, not copies; callers must not modify them.
+func (s *ClusterState) WorkloadPods(namespace, kind, name string) []*corev1.Pod {
+	pods := []*corev1.Pod{}
+	for _, pod := range s.pods {
+		if pod.Namespace != namespace {
+			continue
+		}
+		if k, n := s.Workload(pod); k == kind && n == name {
+			pods = append(pods, pod)
+		}
+	}
+	sortPods(pods)
+	return pods
+}
+
+// SetRequests sets the CPU and memory requests of the container in every
+// pod of the workload (right-sizing, FR23, Section 5.5). Only the resources
+// in req are changed; other requests and the limits stay. Replacements are
+// copies of the evicted pods, so they inherit the new requests. The change
+// is part of the state, so Save and Restore cover it. It returns the number
+// of pods whose container was changed.
+func (s *ClusterState) SetRequests(namespace, kind, name, container string, req corev1.ResourceList) int {
+	changed := 0
+	for _, pod := range s.WorkloadPods(namespace, kind, name) {
+		for i := range pod.Spec.Containers {
+			c := &pod.Spec.Containers[i]
+			if c.Name != container {
+				continue
+			}
+			if c.Resources.Requests == nil {
+				c.Resources.Requests = corev1.ResourceList{}
+			}
+			for r, q := range req {
+				c.Resources.Requests[r] = q.DeepCopy()
+			}
+			changed++
+		}
+	}
+	return changed
+}
