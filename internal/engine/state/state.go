@@ -32,6 +32,7 @@ type ClusterState struct {
 	// the Memento.
 	createdAt         time.Time
 	kubernetesVersion string
+	usageProfiles     []snapshot.UsageProfile // sorted; nil without Prometheus
 }
 
 // objectKey returns the "namespace/name" key used for pods and
@@ -51,7 +52,9 @@ func New(snap *snapshot.Snapshot) *ClusterState {
 		replicaSets:       make(map[string]*appsv1.ReplicaSet, len(snap.ReplicaSets)),
 		createdAt:         snap.CreatedAt,
 		kubernetesVersion: snap.KubernetesVersion,
+		usageProfiles:     copyProfiles(snap.UsageProfiles),
 	}
+	sortProfiles(s.usageProfiles)
 	for i := range snap.Nodes {
 		s.nodes[snap.Nodes[i].Name] = snap.Nodes[i].DeepCopy()
 	}
@@ -104,6 +107,46 @@ func (s *ClusterState) CreatedAt() time.Time {
 // taken from, e.g. "v1.33.1".
 func (s *ClusterState) KubernetesVersion() string {
 	return s.kubernetesVersion
+}
+
+// UsageProfiles returns a copy of the usage profiles of the snapshot
+// (Figure 5.2, FR20), sorted by namespace, kind and name, and the containers
+// of each profile by name (NFR7). It returns nil if the snapshot has none.
+// The profiles describe the measured past, so the simulation never changes
+// them and they are not part of the Memento.
+func (s *ClusterState) UsageProfiles() []snapshot.UsageProfile {
+	return copyProfiles(s.usageProfiles)
+}
+
+// copyProfiles returns a deep copy of the profiles, or nil for none.
+func copyProfiles(profiles []snapshot.UsageProfile) []snapshot.UsageProfile {
+	if len(profiles) == 0 {
+		return nil
+	}
+	out := make([]snapshot.UsageProfile, len(profiles))
+	for i, p := range profiles {
+		out[i] = p
+		out[i].Containers = slices.Clone(p.Containers)
+	}
+	return out
+}
+
+// sortProfiles sorts profiles by namespace, kind and name, and the
+// containers of each profile by name. The collector already writes them in
+// this order; sorting again keeps a hand-written snapshot deterministic too.
+func sortProfiles(profiles []snapshot.UsageProfile) {
+	for _, p := range profiles {
+		slices.SortFunc(p.Containers, func(a, b snapshot.ContainerUsage) int {
+			return cmp.Compare(a.Name, b.Name)
+		})
+	}
+	slices.SortFunc(profiles, func(a, b snapshot.UsageProfile) int {
+		return cmp.Or(
+			cmp.Compare(a.Namespace, b.Namespace),
+			cmp.Compare(a.Kind, b.Kind),
+			cmp.Compare(a.Name, b.Name),
+		)
+	})
 }
 
 // NodeNames returns the names of all nodes in ascending order.
