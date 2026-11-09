@@ -98,3 +98,44 @@ func TestLoadMissingFile(t *testing.T) {
 		t.Fatal("Load() expected an error for a missing file")
 	}
 }
+
+// TestLoadUsageProfiles checks that the loader keeps the usage profiles in
+// the cluster state (FR20) and that a snapshot without the optional key
+// "usageProfiles", as written before profiles existed, still loads.
+func TestLoadUsageProfiles(t *testing.T) {
+	const header = `"formatVersion": "drainsim.snapshot/v1",
+		"createdAt": "2026-01-02T03:04:05Z",
+		"kubernetesVersion": "v1.36.4"`
+	tests := []struct {
+		name string
+		data string
+		want int // number of profiles
+	}{
+		{"with profiles", `{` + header + `, "usageProfiles": [
+			{"namespace": "shop", "kind": "Deployment", "name": "web", "window": "168h",
+			 "containers": [{"name": "app", "cpuP95Millicores": 250, "memoryMaxBytes": 134217728}]}]}`, 1},
+		{"older snapshot without profiles", `{` + header + `}`, 0},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "snapshot.json")
+			if err := os.WriteFile(path, []byte(tt.data), 0600); err != nil {
+				t.Fatal(err)
+			}
+			st, err := Load(path)
+			if err != nil {
+				t.Fatalf("Load() error = %v", err)
+			}
+			got := st.UsageProfiles()
+			if len(got) != tt.want {
+				t.Fatalf("UsageProfiles() = %+v, want %d profiles", got, tt.want)
+			}
+			if tt.want == 1 {
+				c := got[0].Containers[0]
+				if got[0].Name != "web" || c.CPUP95Millicores != 250 || c.MemoryMaxBytes != 134217728 {
+					t.Errorf("profile = %+v", got[0])
+				}
+			}
+		})
+	}
+}
