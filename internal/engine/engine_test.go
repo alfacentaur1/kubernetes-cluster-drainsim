@@ -2,6 +2,7 @@ package engine
 
 import (
 	"context"
+	"reflect"
 	"slices"
 	"strings"
 	"sync"
@@ -309,4 +310,30 @@ func podNames(pods []*corev1.Pod) []string {
 		out[i] = p.Name
 	}
 	return out
+}
+
+// TestUsageProfilesAreImmutable checks that the facade returns the usage
+// profiles of the snapshot (FR20) as copies, and that a drain and a Restore
+// leave them unchanged, because they are not part of the Memento.
+func TestUsageProfilesAreImmutable(t *testing.T) {
+	want := []snapshot.UsageProfile{{Namespace: "default", Kind: "Deployment", Name: "web", Window: "168h",
+		Containers: []snapshot.ContainerUsage{{Name: "app", CPUP95Millicores: 250, MemoryMaxBytes: 64 << 20}}}}
+	e, _, _ := newEngine(t, &snapshot.Snapshot{
+		Nodes:         []corev1.Node{node("node-a"), node("node-b")},
+		Pods:          []corev1.Pod{runningPod("web-1", owner("ReplicaSet", "web-rs"))},
+		UsageProfiles: want,
+	}, nil)
+
+	got := e.UsageProfiles()
+	got[0].Containers[0].CPUP95Millicores = 1 // a copy; must not reach the engine
+
+	cp := e.Save()
+	if _, err := e.Drain(context.Background(), []string{"node-a"}); err != nil {
+		t.Fatalf("Drain() error = %v", err)
+	}
+	e.Restore(cp)
+
+	if got := e.UsageProfiles(); !reflect.DeepEqual(got, want) {
+		t.Errorf("UsageProfiles() = %+v, want %+v", got, want)
+	}
 }
