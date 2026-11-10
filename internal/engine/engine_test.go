@@ -2,6 +2,7 @@ package engine
 
 import (
 	"context"
+	"reflect"
 	"slices"
 	"strings"
 	"sync"
@@ -309,4 +310,118 @@ func podNames(pods []*corev1.Pod) []string {
 		out[i] = p.Name
 	}
 	return out
+}
+
+// TestUsageProfilesAreImmutable checks that the facade returns the usage
+// profiles of the snapshot (FR20) as copies, and that a drain and a Restore
+// leave them unchanged, because they are not part of the Memento.
+func TestUsageProfilesAreImmutable(t *testing.T) {
+	want := []snapshot.UsageProfile{{Namespace: "default", Kind: "Deployment", Name: "web", Window: "168h",
+		Containers: []snapshot.ContainerUsage{{Name: "app", CPUP95Millicores: 250, MemoryMaxBytes: 64 << 20}}}}
+	e, _, _ := newEngine(t, &snapshot.Snapshot{
+		Nodes:         []corev1.Node{node("node-a"), node("node-b")},
+		Pods:          []corev1.Pod{runningPod("web-1", owner("ReplicaSet", "web-rs"))},
+		UsageProfiles: want,
+	}, nil)
+
+	got := e.UsageProfiles()
+	got[0].Containers[0].CPUP95Millicores = 1 // a copy; must not reach the engine
+
+	cp := e.Save()
+	if _, err := e.Drain(context.Background(), []string{"node-a"}); err != nil {
+		t.Fatalf("Drain() error = %v", err)
+	}
+	e.Restore(cp)
+
+	if got := e.UsageProfiles(); !reflect.DeepEqual(got, want) {
+		t.Errorf("UsageProfiles() = %+v, want %+v", got, want)
+	}
+}
+
+// TestSetRequestsReachesReplacements checks FR23: after SetRequests the
+// replacement of an evicted pod has the new requests, so it no longer fits
+// where the old pod would have fitted, and Restore brings the old requests
+// back. node-b has 150m free next to a 1850m filler.
+func TestSetRequestsReachesReplacements(t *testing.T) {
+	web := runningPod("web-rs-aaaaa", owner("ReplicaSet", "web-rs"))
+	web.GenerateName = "web-rs-"
+	web.Spec.Containers[0].Resources.Limits = corev1.ResourceList{corev1.ResourceCPU: resource.MustParse("1")}
+	filler := runningPod("filler-rs-aaaaa", owner("ReplicaSet", "filler-rs"))
+	filler.Labels = map[string]string{"app": "filler"}
+	filler.Spec.NodeName = "node-b"
+	filler.Spec.Containers[0].Resources.Requests[corev1.ResourceCPU] = resource.MustParse("1850m")
+
+	e, log, _ := newEngine(t, &snapshot.Snapshot{
+		Nodes: []corev1.Node{node("node-a"), node("node-b")},
+		Pods:  []corev1.Pod{web, filler},
+	}, nil)
+	cp := e.Save()
+
+	req := e.WorkloadRequests("default", "ReplicaSet", "web-rs")
+	app := req["app"]
+	if got := app.Cpu().String(); got != "100m" {
+		t.Fatalf("WorkloadRequests()[app] CPU = %s, want 100m", got)
+	}
+	limits := e.WorkloadLimits("default", "ReplicaSet", "web-rs")["app"]
+	if got := limits.Cpu().String(); got != "1" {
+		t.Errorf("WorkloadLimits()[app] CPU = %s, want 1", got)
+	}
+	req["app"][corev1.ResourceCPU] = resource.MustParse("5") // a copy; must not reach the engine
+	again := e.WorkloadRequests("default", "ReplicaSet", "web-rs")["app"]
+	if got := again.Cpu().String(); got != "100m" {
+		t.Errorf("WorkloadRequests()[app] CPU after changing a copy = %s, want 100m", got)
+	}
+	if e.WorkloadRequests("none", "Deployment", "x") != nil {
+		t.Errorf("WorkloadRequests() of an unknown workload is not nil")
+	}
+
+	if n := e.SetRequests("default", "ReplicaSet", "web-rs", "app",
+		corev1.ResourceList{corev1.ResourceCPU: resource.MustParse("500m")}); n != 1 {
+		t.Fatalf("SetRequests() = %d, want 1", n)
+	}
+	if _, err := e.Drain(context.Background(), []string{"node-a"}); err != nil {
+		t.Fatalf("Drain() error = %v", err)
+	}
+	wantKinds(t, log, eventlog.Cordoned, eventlog.Evicted, eventlog.Pending, eventlog.NodeDrained)
+
+	e.Restore(cp)
+	e.Detach(log)
+	log = &eventlog.Log{}
+	e.Attach(log)
+	restored := e.WorkloadRequests("default", "ReplicaSet", "web-rs")["app"]
+	if got := restored.Cpu().String(); got != "100m" {
+		t.Errorf("CPU after Restore = %s, want 100m", got)
+	}
+	if _, err := e.Drain(context.Background(), []string{"node-a"}); err != nil {
+		t.Fatalf("Drain() error = %v", err)
+	}
+	wantKinds(t, log, eventlog.Cordoned, eventlog.Evicted, eventlog.Placed, eventlog.NodeDrained)
+}
+
+// TestSetRequestsFreesCapacityOfRunningPod reproduces scenario F1 on kind
+// with the real scheduler: the filler on node-b reports its 1950m also in
+// its container status, as running pods of Kubernetes 1.36 do. After it is
+// right-sized to 100m, the pod from node-a must fit on node-b.
+func TestSetRequestsFreesCapacityOfRunningPod(t *testing.T) {
+	web := runningPod("web-rs-aaaaa", owner("ReplicaSet", "web-rs"))
+	web.GenerateName = "web-rs-"
+	filler := runningPod("filler-rs-aaaaa", owner("ReplicaSet", "filler-rs"))
+	filler.Labels = map[string]string{"app": "filler"}
+	filler.Spec.NodeName = "node-b"
+	big := corev1.ResourceList{corev1.ResourceCPU: resource.MustParse("1950m"), corev1.ResourceMemory: resource.MustParse("64Mi")}
+	filler.Spec.Containers[0].Resources.Requests = big.DeepCopy()
+	filler.Status.ContainerStatuses = []corev1.ContainerStatus{{Name: "app", Ready: true,
+		AllocatedResources: big.DeepCopy(), Resources: &corev1.ResourceRequirements{Requests: big.DeepCopy()}}}
+
+	e, log, _ := newEngine(t, &snapshot.Snapshot{
+		Nodes: []corev1.Node{node("node-a"), node("node-b")},
+		Pods:  []corev1.Pod{web, filler},
+	}, nil)
+
+	e.SetRequests("default", "ReplicaSet", "filler-rs", "app",
+		corev1.ResourceList{corev1.ResourceCPU: resource.MustParse("100m")})
+	if _, err := e.Drain(context.Background(), []string{"node-a"}); err != nil {
+		t.Fatalf("Drain() error = %v", err)
+	}
+	wantKinds(t, log, eventlog.Cordoned, eventlog.Evicted, eventlog.Placed, eventlog.NodeDrained)
 }

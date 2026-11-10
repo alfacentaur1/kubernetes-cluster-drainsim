@@ -249,3 +249,178 @@ unavailable, so the removable nodes must be found without them (Section 5.5).
 **Alternatives:** Exit code 1 when no node can be removed (would mark a
 well-sized cluster as an error); requiring `--config` (would hide the answer
 to Q2 when no prices are at hand).
+
+## 2026-11-09 — Usage profiles are optional and keep the snapshot format version
+
+**Decision:** The snapshot gets an optional field `usageProfiles` (omitted
+when empty) holding one profile per workload: namespace, kind, name, the
+window, and per container the 95th percentile of CPU in millicores and the
+maximum working-set memory in bytes. `formatVersion` stays
+`drainsim.snapshot/v1`. The profiles are kept in the cluster state, outside
+the Memento, and returned as copies by `engine.Simulation.UsageProfiles`.
+
+**Reason:** Usage profiles are part of the snapshot data model (Figure 5.2)
+and are read from Prometheus (FR20), but Prometheus is optional: the
+consolidation works without them (Section 5.5). Adding an optional field
+leaves every older snapshot valid, so no version change is needed (FR4,
+NFR8). The profiles describe the measured past, which a simulated drain does
+not change.
+
+**Alternatives:** `drainsim.snapshot/v2` (would reject valid older snapshots
+for no gain); a separate usage file (a second artifact the analyses would
+have to keep in sync with the snapshot).
+
+## 2026-11-09 — A workload gets the maximum usage over its pods
+
+**Decision:** The collector assigns the usage of each container to the
+workload of its pod: the controller from `kube_pod_owner`, a ReplicaSet
+resolved to its Deployment with the ReplicaSets of the snapshot (the rule of
+`state.Workload`), and a pod without an owner as its own workload of kind
+`Pod`. When a workload has several pods (replicas, or pods replaced during
+the window), each container gets the maximum over the pods, both for CPU
+p95 and memory. Values are rounded up to whole millicores and bytes;
+samples that are NaN or infinite are skipped.
+
+**Reason:** The right-sizing sets one request for all pods of a workload
+(FR21, FR22), because they share their template. Taking the maximum means a
+right-sized request covers every replica, including the busiest one, so the
+simulation never assumes less than any pod used. Rounding up keeps this
+property. `max_over_time(kube_pod_owner[W])` keeps pods that no longer
+exist, so a rollout during the window does not lose usage.
+
+**Alternatives:** The mean or median over pods (would under-size the
+busiest replica and could hide a placement failure); a percentile over all
+samples of all pods pooled together (a heavier query with no clear gain for
+a conservative estimate).
+
+## 2026-11-09 — Usage queries are grouped by pod and use only controllers
+
+**Decision:** Both Prometheus queries group by `namespace, pod, owner_kind,
+owner_name, container` instead of only by the owner, and the maximum over
+the pods is taken in Go. `kube_pod_owner` is filtered with
+`owner_is_controller!="false"`. The queries are instant queries evaluated at
+the time of the snapshot (`time=createdAt`). The window is written in the
+syntax of Prometheus with the largest whole unit (`7d` → `168h`) and stored
+in the profile; `--usage-window` accepts Go durations and whole days (`7d`),
+at least `5m`.
+
+**Reason:** Pods without an owner all have `owner_name="<none>"`; grouping
+by the owner alone would merge them into one series and lose the pod name
+that identifies them as workloads of kind `Pod`. The ReplicaSet → Deployment
+step needs the snapshot anyway, so the last aggregation is done in Go. Only
+the controller owns a pod in the sense of `metav1.GetControllerOf`, which the
+rest of drainsim uses. Evaluating at `createdAt` makes the usage describe the
+same moment as the objects.
+
+**Alternatives:** Grouping by owner only, as first sketched (loses ownerless
+pods); a separate query for ownerless pods (a third query for a rare case).
+
+## 2026-11-09 — Right-sizing: margin, minimum requests and capping at the limit
+
+**Decision:** The right-sized CPU request is the 95th percentile of usage,
+the memory request the maximum times `1 + rightSizing.memoryMargin`, with
+the margin 0.15 by default. CPU is rounded up to whole millicores, memory up
+to whole Mi. A request is at least 1m CPU and 1 Mi memory. If the container
+has a limit below the recommendation, the limit is used and the
+recommendation is marked `capped`. A container of a profiled workload
+without usage data keeps its requests (`noData`); a workload without a
+profile is not changed at all. The current requests are read from the first
+running pod of the workload (pods sorted by name).
+
+**Reason:** FR21 and FR22 name the 95th percentile and the maximum with a
+margin; 0.15 is the default buffer of KRR (Section 2.10), so the result is
+comparable with a tool operators know. Rounding up never recommends less
+than was measured; whole Mi keep the report readable. A zero request would
+remove the request and change the QoS class of the pod (Guaranteed or
+Burstable to BestEffort), which changes eviction order on the node and is
+not what right-sizing means. The API server rejects a request above its
+limit, so a higher recommendation could never be applied; the flag tells the
+operator that the limit, not the usage, decided. Section 5.5 says
+containers without data keep their requests.
+
+**Alternatives:** Margin 0 (a container at its maximum would be killed at
+its first new peak); a margin for CPU too (CPU is throttled, not killed, and
+FR21 uses the percentile alone); raising the limit together with the
+request (changes the behaviour of the workload, beyond what the simulation
+should decide).
+
+## 2026-11-09 — DaemonSet pods are right-sized too
+
+**Decision:** The right-sizing changes the requests of every workload with
+a usage profile, including DaemonSets. Their pods stay on their nodes during
+a drain and disappear with a removed node, but their right-sized requests
+change the free capacity of every remaining node.
+
+**Reason:** A DaemonSet reserves its requests on every node (Section 5.5,
+the lower bound counts them on each node), so it is often the largest
+reservation that right-sizing can reduce. Leaving it out would understate
+what right-sizing frees and make the comparison of FR23 inconsistent with
+how the scheduler counts capacity.
+
+**Alternatives:** Right-sizing only workloads that move during a drain
+(ignores the capacity DaemonSets hold on the nodes that stay).
+
+## 2026-11-09 — consolidate --right-size reports the right-sized run as the main result
+
+**Decision:** `drainsim consolidate --right-size` runs Algorithm 5.3 twice
+from the same checkpoint: first with the requests of the snapshot, then,
+after `Restore` and `Apply`, with the right-sized requests. The main fields
+of the report (removed, kept, lower bound, savings, steps) describe the
+second run; `consolidation.rightSizing` holds the recommendations and the
+removed nodes and lower bound of the first run. Without usage profiles in
+the snapshot, `--right-size` is an input error (exit code 2). The memory
+margin comes from `--config`, or the default without it.
+
+**Reason:** FR23 asks how many nodes are needed after right-sizing, and the
+savings that answer Q2 are those after right-sizing; the first run is the
+baseline to compare with. Restoring the checkpoint also restores the
+numbering of replacements, so both runs name replacements alike (NFR7).
+Silently running without profiles would report the same numbers twice and
+suggest that right-sizing frees nothing.
+
+**Alternatives:** Two full reports (duplicates the snapshot info and steps);
+reporting savings for both runs (the first run is already the plain
+`consolidate`).
+
+## 2026-11-09 — Right-sizing changes the container status, as a rollout would
+
+**Decision:** `SetRequests` changes the requests of a container in the spec
+and, where present, in `status.containerStatuses[].allocatedResources` and
+`status.containerStatuses[].resources.requests` of every pod of the workload.
+Limits and the other fields of the status stay.
+
+**Reason:** Found in scenario F1 on kind: running pods of Kubernetes 1.36
+report their requests in the container status, and since in-place pod
+resize the scheduler counts the larger of spec and status. With only the
+spec changed, the old 800m still filled the nodes and no node could be
+removed, although the right-sized pods fit. Right-sizing in a real cluster
+(`kubectl set resources`) rolls out new pods whose status reports the new
+requests (FR23), so the simulated pods must look like them.
+
+**Alternatives:** Clearing the status resources (the scheduler would fall
+back to the spec, but the pods would look unlike real running pods);
+simulating the rollout with new pod names (changes the names in the report
+without changing the result).
+
+## 2026-11-09 — Scenario F1 uses a 15-minute usage window
+
+**Decision:** The kind scenario `test/scenarios/f1` takes the snapshot
+with `--usage-window 15m` after the workloads have run for 16 minutes, and
+its real counterpart applies the recommendations with `kubectl set
+resources` to every Deployment, StatefulSet and DaemonSet outside the
+namespace `monitoring`. Static pods (`kind: Node`) and the monitoring stack
+keep their requests in the real cluster, while the simulation right-sizes
+them too.
+
+**Reason:** The workloads of the scenario have a constant load, so 15
+minutes give the same percentile as a week (FR20) and keep the scenario
+reproducible in minutes (NFR20). Static pods are defined by files on the
+node and cannot be changed through the API, and the Prometheus operator
+would undo a change of its StatefulSet. Both run only on the control plane,
+which is not a candidate, so the difference does not change which workers
+can be removed.
+
+**Alternatives:** The default window of 7 days (impractical for a test);
+right-sizing only the namespace of the scenario in the real cluster (the
+simulation also lowers kindnet on every worker, so the capacities would
+differ).

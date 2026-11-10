@@ -7,6 +7,7 @@ import (
 
 	"github.com/alfacentaur1/kubernetes-cluster-drainsim/internal/engine"
 	"github.com/alfacentaur1/kubernetes-cluster-drainsim/internal/engine/eventlog"
+	"github.com/alfacentaur1/kubernetes-cluster-drainsim/internal/snapshot"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 )
@@ -198,7 +199,13 @@ func describe(events []eventlog.Event) []string {
 }
 
 func (f *fakeSim) CheckRunning(engine.PolicyChecker) []engine.Violation { return nil }
-func (f *fakeSim) RemoveNode(string) error                              { return nil }
-func (f *fakeSim) Requested(string) corev1.ResourceList                 { return nil }
-func (f *fakeSim) Allocatable(string) corev1.ResourceList               { return nil }
-func (f *fakeSim) Node(string) *corev1.Node                             { return nil }
+func (f *fakeSim) UsageProfiles() []snapshot.UsageProfile               { return nil }
+func (f *fakeSim) WorkloadRequests(_, _, _ string) map[string]corev1.ResourceList {
+	return nil
+}
+func (f *fakeSim) WorkloadLimits(_, _, _ string) map[string]corev1.ResourceList { return nil }
+func (f *fakeSim) SetRequests(_, _, _, _ string, _ corev1.ResourceList) int     { return 0 }
+func (f *fakeSim) RemoveNode(string) error                                      { return nil }
+func (f *fakeSim) Requested(string) corev1.ResourceList                         { return nil }
+func (f *fakeSim) Allocatable(string) corev1.ResourceList                       { return nil }
+func (f *fakeSim) Node(string) *corev1.Node                                     { return nil }

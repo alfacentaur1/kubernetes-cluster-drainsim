@@ -39,10 +39,10 @@ go vet ./...
 go test ./...         # tests use the real scheduler framework; they take a while
 go build -o drainsim ./cmd/drainsim
 
-./drainsim snapshot -o cluster.json [--kubeconfig F] [--context C]
+./drainsim snapshot -o cluster.json [--kubeconfig F] [--context C] [--prometheus URL [--usage-window 7d]]
 ./drainsim drain cluster.json [--nodes a,b | --selector k=v] [--strategy greedy|backtracking] [--max-attempts N] [--format text|json]
 ./drainsim policy cluster.json --config drainsim.yaml [--nodes … | --selector …] [--format …]
-./drainsim consolidate cluster.json [--config drainsim.yaml] [--nodes … | --selector …] [--format …]
+./drainsim consolidate cluster.json [--config drainsim.yaml] [--right-size] [--nodes … | --selector …] [--format …]
 ```
 
 `examples/drainsim.yaml` is a full configuration (policy targets, Azure
@@ -68,6 +68,8 @@ change is done. `go build` does not compile `_test.go` files.
 - **Node image for scenarios: `kindest/node:v1.36.4`** with the digest from the
   kind v0.33.0 release notes (the newest 1.36 image; the libraries are pinned
   to v1.36.5, same minor).
+- **Helm v3.22.1 is in `~/.local/bin` in WSL** (for kube-prometheus-stack in
+  `test/scenarios/f1`). jq in WSL is 1.5: no `IN()` and other newer builtins.
 - **Scenario tests live in `test/scenarios/<name>/run.sh`**, with `kind.yaml`,
   the manifests and a `README.md` next to it. Each script recreates its own
   cluster and writes to `out/` (ignored by git). Delete the cluster when done:
@@ -211,16 +213,12 @@ Rules that keep the code aligned with the diagrams:
 | M4 report + `drain` command | done (report tests pending) |
 | M5 drain order search: greedy, backtracking, `--strategy`, `--max-attempts` | done |
 | M6 policy impact: config, running-pod check, Alg. 5.4, `policy` command | done |
-| M7 consolidation (Alg. 5.3), lower bound, cost/CO₂ estimator, `consolidate` command, example configuration | in progress (usage profiles and right-sizing open) |
-| M8 scenario clusters (kind) P1–S3, RQ1 comparison with real drains, benchmarks (NFR9), CI | started: `test/scenarios/basic` (PDB, two workers) matches real drains |
+| M7 consolidation (Alg. 5.3), lower bound, cost/CO₂ estimator, `consolidate` command, example configuration, usage profiles + Prometheus collector (FR20), right-sizing `--right-size` (FR21–FR23) | done |
+| M8 scenario clusters (kind) P1–S3, RQ1 comparison with real drains, benchmarks (NFR9), CI | started: `test/scenarios/basic` (PDB, two workers) and `test/scenarios/f1` (right-sizing with Prometheus) match real drains |
 
-Next steps in M7, in this order:
-1. Usage profiles per workload and container in the snapshot (Fig 5.2).
-2. Collector: read usage from Prometheus (FR20) — p95 CPU and max memory per
-   container, assigned to the workload via `kube_pod_owner`; develop against a
-   fake Prometheus (`httptest`).
-3. Right-sizing (FR21–FR23): engine method to replace container requests
-   (ISimulation: "replace the requests of containers"), then consolidate again.
+Next steps:
+1. M8: the remaining scenario clusters (P1–P10, F2–F3, S1–S3) and the RQ1
+   comparison with real drains.
 
 Known open items: Fig 5.4 still lacks the "refused pods → drain fails" branch
 (diagram only); `examples/drainsim.yaml` has no embodied emissions, because

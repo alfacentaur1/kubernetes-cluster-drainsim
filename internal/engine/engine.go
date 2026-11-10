@@ -15,6 +15,7 @@ import (
 	"github.com/alfacentaur1/kubernetes-cluster-drainsim/internal/engine/replacement"
 	"github.com/alfacentaur1/kubernetes-cluster-drainsim/internal/engine/scheduler"
 	"github.com/alfacentaur1/kubernetes-cluster-drainsim/internal/engine/state"
+	"github.com/alfacentaur1/kubernetes-cluster-drainsim/internal/snapshot"
 	corev1 "k8s.io/api/core/v1"
 	resourcehelper "k8s.io/component-helpers/resource"
 )
@@ -43,7 +44,6 @@ type Violation struct {
 }
 
 // Simulation is the interface the analyses use (ISimulation, Section 5.3).
-// Replacing container requests (Section 5.5) is added with consolidation.
 type Simulation interface {
 	SetPolicy(p PolicyChecker)
 	Drain(ctx context.Context, nodes []string) (Result, error)
@@ -78,6 +78,23 @@ type Simulation interface {
 	// Node returns a copy of the node, or nil if it does not exist. The
 	// consolidation passes it to the cost model (Section 5.5).
 	Node(name string) *corev1.Node
+	// UsageProfiles returns a copy of the measured usage of the workloads
+	// (Figure 5.2, FR20), sorted by namespace, kind and name; nil if the
+	// snapshot has none. The right-sizing uses it (FR21, FR22).
+	UsageProfiles() []snapshot.UsageProfile
+
+	// WorkloadRequests returns the current requests per container of the
+	// workload, taken from its first running pod (sorted by name), or nil if
+	// it has no running pod. The right-sizing compares them with the usage
+	// (Section 5.5).
+	WorkloadRequests(namespace, kind, name string) map[string]corev1.ResourceList
+	// WorkloadLimits returns the limits per container of the same pod, or
+	// nil. A right-sized request may not exceed its limit.
+	WorkloadLimits(namespace, kind, name string) map[string]corev1.ResourceList
+	// SetRequests replaces the requests of a container in every pod of the
+	// workload ("replace the requests of containers", Section 5.3, FR23) and
+	// returns the number of pods changed. Save and Restore cover the change.
+	SetRequests(namespace, kind, name, container string, req corev1.ResourceList) int
 }
 
 // Result is the outcome of draining nodes in the given order. The drain stops
@@ -399,4 +416,55 @@ func (e *Engine) Node(name string) *corev1.Node {
 		return nil
 	}
 	return n.DeepCopy()
+}
+
+// UsageProfiles returns a copy of the usage profiles of the snapshot, or nil
+// if it has none (FR20). They never change during the simulation.
+func (e *Engine) UsageProfiles() []snapshot.UsageProfile {
+	return e.state.UsageProfiles()
+}
+
+// WorkloadRequests returns copies of the requests per container of the first
+// running pod of the workload, or nil if it has none (FR23).
+func (e *Engine) WorkloadRequests(namespace, kind, name string) map[string]corev1.ResourceList {
+	return e.workloadResources(namespace, kind, name, func(r corev1.ResourceRequirements) corev1.ResourceList {
+		return r.Requests
+	})
+}
+
+// WorkloadLimits returns copies of the limits per container of the first
+// running pod of the workload, or nil if it has none.
+func (e *Engine) WorkloadLimits(namespace, kind, name string) map[string]corev1.ResourceList {
+	return e.workloadResources(namespace, kind, name, func(r corev1.ResourceRequirements) corev1.ResourceList {
+		return r.Limits
+	})
+}
+
+// workloadResources returns get applied to every container of the first
+// running pod of the workload, as copies, or nil if there is no such pod.
+// A container without the resources gets an empty list, so the caller sees
+// every container.
+func (e *Engine) workloadResources(namespace, kind, name string,
+	get func(corev1.ResourceRequirements) corev1.ResourceList) map[string]corev1.ResourceList {
+	for _, pod := range e.state.WorkloadPods(namespace, kind, name) {
+		if pod.Status.Phase != corev1.PodRunning {
+			continue
+		}
+		out := make(map[string]corev1.ResourceList, len(pod.Spec.Containers))
+		for _, c := range pod.Spec.Containers {
+			list := get(c.Resources).DeepCopy()
+			if list == nil {
+				list = corev1.ResourceList{}
+			}
+			out[c.Name] = list
+		}
+		return out
+	}
+	return nil
+}
+
+// SetRequests replaces the requests of the container in every pod of the
+// workload and returns the number of pods changed (FR23).
+func (e *Engine) SetRequests(namespace, kind, name, container string, req corev1.ResourceList) int {
+	return e.state.SetRequests(namespace, kind, name, container, req)
 }

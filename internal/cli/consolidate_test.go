@@ -117,8 +117,9 @@ func runConsolidateCmd(t *testing.T, snap string, args ...string) (string, error
 }
 
 // writeConsolidateSnapshot writes three nodes of 2 CPU with 500m, 1200m and
-// 1200m requested: only node-a can be removed.
-func writeConsolidateSnapshot(t *testing.T) string {
+// 1200m requested: only node-a can be removed. The functions in change can
+// add to the snapshot before it is written.
+func writeConsolidateSnapshot(t *testing.T, change ...func(*snapshot.Snapshot)) string {
 	t.Helper()
 	snap := &snapshot.Snapshot{
 		FormatVersion:     snapshot.FormatVersion,
@@ -130,6 +131,9 @@ func writeConsolidateSnapshot(t *testing.T) string {
 			testPod("node-b", "large-b", "1200m"),
 			testPod("node-c", "large-c", "1200m"),
 		},
+	}
+	for _, c := range change {
+		c(snap)
 	}
 	path := filepath.Join(t.TempDir(), "snapshot.json")
 	if err := snapshot.Write(path, snap); err != nil {
@@ -189,5 +193,50 @@ func testPod(nodeName, rs, cpu string) corev1.Pod {
 			Phase:      corev1.PodRunning,
 			Conditions: []corev1.PodCondition{{Type: corev1.PodReady, Status: corev1.ConditionTrue}},
 		},
+	}
+}
+
+// With --right-size the two large pods (1200m requested, 600m used) are
+// right-sized and one more node can be removed: node-a and node-b, with
+// 500m + 600m + 600m = 1700m left on node-c (FR23, Section 5.5).
+func TestConsolidateRightSize(t *testing.T) {
+	snap := writeConsolidateSnapshot(t, func(s *snapshot.Snapshot) {
+		for _, rs := range []string{"large-b", "large-c"} {
+			s.UsageProfiles = append(s.UsageProfiles, snapshot.UsageProfile{
+				Namespace: "default", Kind: "ReplicaSet", Name: "app-" + rs, Window: "168h",
+				Containers: []snapshot.ContainerUsage{{Name: "app", CPUP95Millicores: 600, MemoryMaxBytes: 40 << 20}},
+			})
+		}
+	})
+	cfg := writeFile(t, "drainsim.yaml", "rightSizing:\n  memoryMargin: 0.25\n")
+
+	out, err := runConsolidateCmd(t, snap, "--right-size", "--config", cfg)
+
+	if code := reporter.ExitCode(err); code != reporter.ExitOK {
+		t.Fatalf("exit code = %d (err %v), want 0", code, err)
+	}
+	for _, want := range []string{
+		"PASSED  With the current requests 1 of 3 nodes can be removed; with right-sized requests 2 (at least 1 node is needed).",
+		// 40 Mi · 1.25 = 50 Mi
+		"  default/ReplicaSet app-large-b, container app: CPU 1200m → 600m, memory 64Mi → 50Mi\n",
+		"With the current requests:\nRemovable nodes, in order: node-a\nLower bound: at least 2 nodes are needed\n",
+		"With right-sized requests:\nRemovable nodes, in order: node-a, node-b\n",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("output =\n%s\nwant substring %q", out, want)
+		}
+	}
+}
+
+// --right-size on a snapshot without usage profiles is an input error
+// (exit code 2) that says how to take a snapshot with them.
+func TestConsolidateRightSizeWithoutProfiles(t *testing.T) {
+	_, err := runConsolidateCmd(t, writeConsolidateSnapshot(t), "--right-size")
+
+	if code := reporter.ExitCode(err); code != reporter.ExitError {
+		t.Fatalf("exit code = %d (err %v), want 2", code, err)
+	}
+	if !strings.Contains(err.Error(), "--prometheus") {
+		t.Errorf("error = %q, want a hint to take the snapshot with --prometheus", err)
 	}
 }

@@ -32,6 +32,7 @@ type ClusterState struct {
 	// the Memento.
 	createdAt         time.Time
 	kubernetesVersion string
+	usageProfiles     []snapshot.UsageProfile // sorted; nil without Prometheus
 }
 
 // objectKey returns the "namespace/name" key used for pods and
@@ -51,7 +52,9 @@ func New(snap *snapshot.Snapshot) *ClusterState {
 		replicaSets:       make(map[string]*appsv1.ReplicaSet, len(snap.ReplicaSets)),
 		createdAt:         snap.CreatedAt,
 		kubernetesVersion: snap.KubernetesVersion,
+		usageProfiles:     copyProfiles(snap.UsageProfiles),
 	}
+	sortProfiles(s.usageProfiles)
 	for i := range snap.Nodes {
 		s.nodes[snap.Nodes[i].Name] = snap.Nodes[i].DeepCopy()
 	}
@@ -104,6 +107,46 @@ func (s *ClusterState) CreatedAt() time.Time {
 // taken from, e.g. "v1.33.1".
 func (s *ClusterState) KubernetesVersion() string {
 	return s.kubernetesVersion
+}
+
+// UsageProfiles returns a copy of the usage profiles of the snapshot
+// (Figure 5.2, FR20), sorted by namespace, kind and name, and the containers
+// of each profile by name (NFR7). It returns nil if the snapshot has none.
+// The profiles describe the measured past, so the simulation never changes
+// them and they are not part of the Memento.
+func (s *ClusterState) UsageProfiles() []snapshot.UsageProfile {
+	return copyProfiles(s.usageProfiles)
+}
+
+// copyProfiles returns a deep copy of the profiles, or nil for none.
+func copyProfiles(profiles []snapshot.UsageProfile) []snapshot.UsageProfile {
+	if len(profiles) == 0 {
+		return nil
+	}
+	out := make([]snapshot.UsageProfile, len(profiles))
+	for i, p := range profiles {
+		out[i] = p
+		out[i].Containers = slices.Clone(p.Containers)
+	}
+	return out
+}
+
+// sortProfiles sorts profiles by namespace, kind and name, and the
+// containers of each profile by name. The collector already writes them in
+// this order; sorting again keeps a hand-written snapshot deterministic too.
+func sortProfiles(profiles []snapshot.UsageProfile) {
+	for _, p := range profiles {
+		slices.SortFunc(p.Containers, func(a, b snapshot.ContainerUsage) int {
+			return cmp.Compare(a.Name, b.Name)
+		})
+	}
+	slices.SortFunc(profiles, func(a, b snapshot.UsageProfile) int {
+		return cmp.Or(
+			cmp.Compare(a.Namespace, b.Namespace),
+			cmp.Compare(a.Kind, b.Kind),
+			cmp.Compare(a.Name, b.Name),
+		)
+	})
 }
 
 // NodeNames returns the names of all nodes in ascending order.
@@ -294,4 +337,73 @@ func (s *ClusterState) RemoveNode(name string) error {
 	}
 	delete(s.nodes, name)
 	return nil
+}
+
+// WorkloadPods returns the pods of the workload, by the rule of Workload,
+// sorted by name. Pending replacements are included. The returned pods are
+// the ones stored in the state, not copies; callers must not modify them.
+func (s *ClusterState) WorkloadPods(namespace, kind, name string) []*corev1.Pod {
+	pods := []*corev1.Pod{}
+	for _, pod := range s.pods {
+		if pod.Namespace != namespace {
+			continue
+		}
+		if k, n := s.Workload(pod); k == kind && n == name {
+			pods = append(pods, pod)
+		}
+	}
+	sortPods(pods)
+	return pods
+}
+
+// SetRequests sets the CPU and memory requests of the container in every
+// pod of the workload (right-sizing, FR23, Section 5.5). Only the resources
+// in req are changed; other requests and the limits stay. Replacements are
+// copies of the evicted pods, so they inherit the new requests. The change
+// is part of the state, so Save and Restore cover it. It returns the number
+// of pods whose container was changed.
+//
+// The status of the container is changed too (allocatedResources and
+// resources.requests). Since in-place pod resize (Kubernetes 1.35), the
+// scheduler counts the larger of the requests in the spec and in the status,
+// so a pod with only its spec changed would still reserve the old requests.
+// In a real cluster the right-sized pods are new pods of a rollout, whose
+// status reports the new requests.
+func (s *ClusterState) SetRequests(namespace, kind, name, container string, req corev1.ResourceList) int {
+	changed := 0
+	for _, pod := range s.WorkloadPods(namespace, kind, name) {
+		for i := range pod.Spec.Containers {
+			c := &pod.Spec.Containers[i]
+			if c.Name != container {
+				continue
+			}
+			c.Resources.Requests = withRequests(c.Resources.Requests, req)
+			changed++
+		}
+		for i := range pod.Status.ContainerStatuses {
+			cs := &pod.Status.ContainerStatuses[i]
+			if cs.Name != container {
+				continue
+			}
+			if cs.AllocatedResources != nil {
+				cs.AllocatedResources = withRequests(cs.AllocatedResources, req)
+			}
+			if cs.Resources != nil {
+				cs.Resources.Requests = withRequests(cs.Resources.Requests, req)
+			}
+		}
+	}
+	return changed
+}
+
+// withRequests returns list with the resources of req set to copies of
+// their values; list may be nil.
+func withRequests(list, req corev1.ResourceList) corev1.ResourceList {
+	if list == nil {
+		list = corev1.ResourceList{}
+	}
+	for r, q := range req {
+		list[r] = q.DeepCopy()
+	}
+	return list
 }

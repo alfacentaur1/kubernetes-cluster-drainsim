@@ -1,0 +1,110 @@
+# Workloads of scenario F1 (right-sizing, FR21–FR23).
+#
+# over-a, over-b: 3 replicas each that request 800m CPU and 512Mi but use
+#   about 50m (a busy loop 5 % of the time) and about 70Mi. With these
+#   requests two pods fill a worker (2 CPU allocatable), so the six pods need
+#   all three workers.
+# hungry: 2 replicas that request 100m CPU and 64Mi but use a whole core and
+#   about 110Mi; right-sizing must raise them ("higher", Section 5.5). Two of
+#   them do not fit on one worker after right-sizing, so the right-sized pods
+#   need two workers, not one.
+#
+# No limits, no PDBs, no volumes: the drains are decided by capacity alone.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: shop
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: load
+  namespace: shop
+data:
+  # load.py DUTY MIB: holds MIB MiB of touched memory and keeps the CPU busy
+  # DUTY of every second (1.0 = one full core).
+  load.py: |
+    import sys, time
+    duty, mib = float(sys.argv[1]), int(sys.argv[2])
+    block = b"x" * (mib << 20)  # touched, so it counts in the working set
+    while True:
+        start = time.monotonic()
+        while time.monotonic() - start < duty:
+            pass
+        if duty < 1:
+            time.sleep(1 - duty)
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: over-a
+  namespace: shop
+spec:
+  replicas: 3
+  selector:
+    matchLabels: {app: over-a}
+  template:
+    metadata:
+      labels: {app: over-a}
+    spec:
+      containers:
+        - name: app
+          image: python:3.13-alpine
+          command: ["python", "-u", "/load/load.py", "0.05", "60"]
+          resources:
+            requests: {cpu: 800m, memory: 512Mi}
+          volumeMounts:
+            - {name: load, mountPath: /load}
+      volumes:
+        - name: load
+          configMap: {name: load}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: over-b
+  namespace: shop
+spec:
+  replicas: 3
+  selector:
+    matchLabels: {app: over-b}
+  template:
+    metadata:
+      labels: {app: over-b}
+    spec:
+      containers:
+        - name: app
+          image: python:3.13-alpine
+          command: ["python", "-u", "/load/load.py", "0.05", "60"]
+          resources:
+            requests: {cpu: 800m, memory: 512Mi}
+          volumeMounts:
+            - {name: load, mountPath: /load}
+      volumes:
+        - name: load
+          configMap: {name: load}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hungry
+  namespace: shop
+spec:
+  replicas: 2
+  selector:
+    matchLabels: {app: hungry}
+  template:
+    metadata:
+      labels: {app: hungry}
+    spec:
+      containers:
+        - name: app
+          image: python:3.13-alpine
+          command: ["python", "-u", "/load/load.py", "1.0", "100"]
+          resources:
+            requests: {cpu: 100m, memory: 64Mi}
+          volumeMounts:
+            - {name: load, mountPath: /load}
+      volumes:
+        - name: load
+          configMap: {name: load}

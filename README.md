@@ -27,21 +27,56 @@ This is a bachelor's thesis project at FEL ČVUT (Czech Technical University in 
 # Take a snapshot (the only command that talks to the cluster)
 drainsim snapshot -o cluster.json
 
+# ... optionally with the usage of the workloads from Prometheus (FR20)
+drainsim snapshot -o cluster.json --prometheus http://localhost:9090 --usage-window 7d
+
 # Q1: can the nodes be drained, and in what order?
 drainsim drain cluster.json
 
 # Q2: how many nodes are needed, and what does the surplus cost?
 drainsim consolidate cluster.json
 
+# ... and how many after the requests are right-sized from the usage (FR23)
+drainsim consolidate cluster.json --right-size --config drainsim.yaml
+
 # Q3: does a stricter Pod Security level break the next drain?
 drainsim policy cluster.json
 ```
+
+### Usage profiles from Prometheus
+
+`drainsim snapshot` reads the usage of the workloads only when `--prometheus`
+is given; without it the snapshot has no usage profiles, and the consolidation
+works with the requests alone.
+
+| Flag | Default | Meaning |
+|---|---|---|
+| `--prometheus URL` | – | Base URL of the Prometheus HTTP API, e.g. `http://localhost:9090` (`kubectl port-forward`) |
+| `--usage-window W` | `7d` | Length of the history, e.g. `7d`, `24h`, `90m` (at least `5m`); requires `--prometheus` |
+
+For every container, the snapshot stores the 95th percentile of CPU usage and
+the maximum working-set memory over the window, assigned to its workload
+(Deployment, StatefulSet, DaemonSet, Job, or the ReplicaSet/Pod itself when
+nothing owns it) through `kube_pod_owner`. A workload gets the maximum over
+its pods. Prometheus must scrape cAdvisor (`container_*` metrics) and
+kube-state-metrics. A failed query fails the snapshot (exit code `2`).
+
+### Right-sizing
+
+`drainsim consolidate --right-size` needs a snapshot with usage profiles. It
+runs the consolidation twice from the same state: with the current requests,
+and with requests set to the 95th percentile of CPU and the maximum memory
+plus `rightSizing.memoryMargin` (default `0.15`, the buffer of KRR). Requests
+are at least `1m` and `1Mi`, never above the container's limit, and
+containers without usage data keep theirs. The report lists every
+recommendation and compares the removable nodes and the lower bound of both
+runs; the savings are those after right-sizing.
 
 Exit codes: `0` success, `1` the analysed change would fail, `2` usage or input error.
 
 ## Guarantees
 
-- **Read-only.** Only `get`/`list` on the Kubernetes API. Nothing is ever created, updated, deleted, evicted or bound in a real cluster.
+- **Read-only.** Only `get`/`list` on the Kubernetes API (see `test/rbac/readonly.yaml`). Nothing is ever created, updated, deleted, evicted or bound in a real cluster. Prometheus is only queried through `GET /api/v1/query`, so read access to its query API is enough; no Kubernetes permission is needed for it.
 - **Offline.** Only `snapshot` makes network calls; the analyses run from the snapshot file alone.
 - **Real scheduler.** Pod placement uses the upstream kube-scheduler framework plugins (PreFilter, Filter, PreScore, Score, NormalizeScore). Scheduling logic is not re-implemented.
 - **Deterministic.** The same snapshot and configuration always give the same result.
