@@ -54,7 +54,7 @@ func selectNodes(st *state.ClusterState, names []string, selector string) ([]str
 
 		var out []string
 		// st.Nodes() returns the nodes sorted by name, so the result is
-		// sorted by name as well (NFR7).
+		// sorted by name as well (NFR6).
 		for _, n := range st.Nodes() {
 			// labels.Set is the map of labels in the form Matches expects.
 			if sel.Matches(labels.Set(n.Labels)) {

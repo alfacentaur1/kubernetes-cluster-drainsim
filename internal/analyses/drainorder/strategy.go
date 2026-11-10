@@ -42,7 +42,7 @@ type Outcome struct {
 // candidates returns the nodes in the order a strategy tries them: the node
 // whose drain moves the fewest requests first (Section 5.4). Requests are
 // compared by CPU, then by memory, and a tie goes to the lower node name, so
-// the order is deterministic (NFR7). The requests come from the current
+// the order is deterministic (NFR6). The requests come from the current
 // state, so they change after every drain.
 func candidates(sim engine.Simulation, nodes []string) []string {
 	type candidate struct {

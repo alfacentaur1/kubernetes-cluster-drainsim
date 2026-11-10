@@ -16,11 +16,34 @@ import (
 
 // Config is the configuration file written by the user (artifact
 // Configuration, Figure 5.1). It holds decisions of the user rather than the
-// state of the cluster (Section 5.2). Prices, carbon intensity and energy
-// coefficients are added with the consolidation.
+// state of the cluster (Section 5.2): target Pod Security levels, prices
+// and emission factors, and the margin of the right-sizing.
 type Config struct {
 	PolicyTargets PolicyTargets `json:"policyTargets"`
 	Estimate      Estimate      `json:"estimate"`
+	RightSizing   RightSizing   `json:"rightSizing"`
+}
+
+// DefaultMemoryMargin is the fraction added to the measured memory maximum
+// when no margin is configured: 0.15, the default buffer of KRR
+// (Section 2.10, FR22).
+const DefaultMemoryMargin = 0.15
+
+// RightSizing configures how the requests of containers are recomputed from
+// their usage (FR21–FR23, Section 5.5).
+type RightSizing struct {
+	// MemoryMargin is the fraction added to the memory maximum, e.g. 0.15
+	// for 15 %. Nil means DefaultMemoryMargin; 0 is a valid choice (no
+	// margin), so the field is a pointer.
+	MemoryMargin *float64 `json:"memoryMargin,omitempty"`
+}
+
+// Margin returns the memory margin, or DefaultMemoryMargin if none is set.
+func (r RightSizing) Margin() float64 {
+	if r.MemoryMargin == nil {
+		return DefaultMemoryMargin
+	}
+	return *r.MemoryMargin
 }
 
 // PolicyTargets are the target Pod Security levels for the policy impact
@@ -37,7 +60,7 @@ func (t PolicyTargets) Empty() bool {
 }
 
 // Load reads a configuration file. Unknown fields are an error, so that a
-// typo such as "policyTarget" is not silently ignored (NFR17). The levels
+// typo such as "policyTarget" is not silently ignored (NFR16). The levels
 // themselves are checked by the PSA checker that uses them.
 func Load(path string) (*Config, error) {
 	data, err := os.ReadFile(path)
@@ -48,13 +71,16 @@ func Load(path string) (*Config, error) {
 	if err := yaml.UnmarshalStrict(data, &c); err != nil {
 		return nil, fmt.Errorf("configuration %s: %w", path, err)
 	}
+	if m := c.RightSizing.Margin(); m < 0 {
+		return nil, fmt.Errorf("configuration %s: rightSizing.memoryMargin %g must not be negative", path, m)
+	}
 	return &c, nil
 }
 
 // Estimate holds the values the cost and CO₂ estimator needs (FR26–FR28,
 // Section 5.5). The user takes them from the price list of the provider and
 // from the coefficients of Cloud Carbon Footprint; the tool downloads
-// nothing (NFR3, NFR4).
+// nothing (NFR3).
 type Estimate struct {
 	// Hours is the period of the estimate; 0 means one month (730 h, FR27).
 	Hours float64 `json:"hours,omitempty"`

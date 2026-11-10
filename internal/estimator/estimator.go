@@ -23,7 +23,7 @@ type Saving struct {
 
 // Estimator is the Cost and CO₂ estimator of Section 5.5. It computes the
 // saving of a removed node from the prices, grid intensities and energy
-// coefficients in the configuration; it downloads nothing (NFR3, NFR4). It
+// coefficients in the configuration; it downloads nothing (NFR3). It
 // implements consolidation.CostModel (ICostModel).
 type Estimator struct {
 	cfg config.Estimate

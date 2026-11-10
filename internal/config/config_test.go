@@ -19,7 +19,7 @@ func TestLoad(t *testing.T) {
 	}
 }
 
-// A typo in a key is an error, not a silently empty configuration (NFR17).
+// A typo in a key is an error, not a silently empty configuration (NFR16).
 func TestLoadRejectsUnknownField(t *testing.T) {
 	path := write(t, "policyTarget:\n  cluster: baseline\n")
 
@@ -119,5 +119,36 @@ func TestExampleConfiguration(t *testing.T) {
 	}
 	if _, ok := c.Estimate.Regions["westeurope"]; !ok {
 		t.Errorf("Regions = %v, want westeurope", c.Estimate.Regions)
+	}
+}
+
+// The memory margin of the right-sizing defaults to 0.15, the buffer of KRR
+// (Section 2.10, FR22); an explicit 0 is kept, a negative one is an error.
+func TestRightSizingMargin(t *testing.T) {
+	tests := []struct {
+		name    string
+		yaml    string
+		want    float64
+		wantErr bool
+	}{
+		{"default", "policyTargets:\n  cluster: baseline\n", 0.15, false},
+		{"set", "rightSizing:\n  memoryMargin: 0.3\n", 0.3, false},
+		{"zero", "rightSizing:\n  memoryMargin: 0\n", 0, false},
+		{"negative", "rightSizing:\n  memoryMargin: -0.1\n", 0, true},
+		{"typo", "rightSizing:\n  memoryMargins: 0.3\n", 0, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			c, err := Load(write(t, tt.yaml))
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("Load() error = %v, wantErr %v", err, tt.wantErr)
+			}
+			if err == nil && c.RightSizing.Margin() != tt.want {
+				t.Errorf("Margin() = %v, want %v", c.RightSizing.Margin(), tt.want)
+			}
+		})
+	}
+	if got := (RightSizing{}).Margin(); got != DefaultMemoryMargin {
+		t.Errorf("Margin() of an empty section = %v, want %v", got, DefaultMemoryMargin)
 	}
 }

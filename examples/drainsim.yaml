@@ -11,6 +11,12 @@ policyTargets:
     shop: restricted
     payments: restricted
 
+# Right-sizing of `drainsim consolidate --right-size` (FR21-FR23, Section 5.5).
+# The memory request is the measured maximum plus this fraction; 0.15 is the
+# default buffer of KRR (Robusta KRR, simple strategy) and the default here.
+rightSizing:
+  memoryMargin: 0.15
+
 # Cost and CO2 estimate of the consolidation (FR26-FR28, Section 5.5).
 estimate:
   # hours: 730               # period of the estimate; missing = one month (730 h)

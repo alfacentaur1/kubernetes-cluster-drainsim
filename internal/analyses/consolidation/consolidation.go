@@ -143,7 +143,7 @@ func unplacedReason(events []eventlog.Event) string {
 }
 
 // byRequests returns the nodes sorted by the requests of their pods: CPU,
-// then memory, then name (the same order as in Section 5.4, NFR7).
+// then memory, then name (the same order as in Section 5.4, NFR6).
 func byRequests(sim engine.Simulation, nodes []string) []string {
 	type node struct {
 		name     string

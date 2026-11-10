@@ -12,7 +12,21 @@ One simulation engine, three analyses.
 
 This is a bachelor's thesis project at FEL ČVUT (Czech Technical University in Prague, Faculty of Electrical Engineering). The design is described in the bachelor's thesis (chapter 5); design decisions taken during the implementation are recorded in [`docs/decisions.md`](docs/decisions.md).
 
-> **Status:** the `snapshot` command and the complete simulation engine (cluster state, eviction rules, PDB model, replacement model, PSA checker, scheduler adapter, event log) are implemented. The `drain`, `consolidate` and `policy` commands and the report are in progress; the usage below shows the planned interface.
+> **Status:** the commands `snapshot`, `drain`, `consolidate` and `policy` are implemented, together with the simulation engine and the text and JSON report. Scenario tests on kind clusters exist for `test/scenarios/basic` (a PDB and two workers) and `test/scenarios/f1` (right-sizing with Prometheus); the results matched real drains. The remaining scenarios are planned.
+
+## Supported Kubernetes version
+
+drainsim is built against Kubernetes **1.36** (`k8s.io/kubernetes` v1.36.5 and the staging modules v0.36.5) and is tested with that version (kind node image `kindest/node:v1.36.4`). Snapshots of other versions may load, but they are not tested.
+
+## Build
+
+drainsim is a single static binary with no runtime dependencies:
+
+```sh
+CGO_ENABLED=0 go build ./cmd/drainsim                                   # for the current platform
+GOOS=linux  GOARCH=amd64 CGO_ENABLED=0 go build -o drainsim ./cmd/drainsim   # Linux
+GOOS=darwin GOARCH=arm64 CGO_ENABLED=0 go build -o drainsim ./cmd/drainsim   # macOS (Apple silicon; amd64 for Intel)
+```
 
 ## How it works
 
@@ -21,11 +35,14 @@ This is a bachelor's thesis project at FEL ČVUT (Czech Technical University in 
 3. The simulation replays `kubectl drain` semantics: cordon, evict, respect PodDisruptionBudgets, create replacements by owner kind, check Pod Security, and place pods with the **real kube-scheduler framework plugins** used as a Go library.
 4. The result is a report (text or JSON) with an explanation of each failure taken from the simulation event log.
 
-## Planned usage
+## Usage
 
 ```sh
 # Take a snapshot (the only command that talks to the cluster)
 drainsim snapshot -o cluster.json
+
+# ... optionally with the usage of the workloads from Prometheus (FR20)
+drainsim snapshot -o cluster.json --prometheus http://localhost:9090 --usage-window 7d
 
 # Q1: can the nodes be drained, and in what order?
 drainsim drain cluster.json
@@ -33,15 +50,47 @@ drainsim drain cluster.json
 # Q2: how many nodes are needed, and what does the surplus cost?
 drainsim consolidate cluster.json
 
+# ... and how many after the requests are right-sized from the usage (FR23)
+drainsim consolidate cluster.json --right-size --config drainsim.yaml
+
 # Q3: does a stricter Pod Security level break the next drain?
 drainsim policy cluster.json
 ```
+
+### Usage profiles from Prometheus
+
+`drainsim snapshot` reads the usage of the workloads only when `--prometheus`
+is given; without it the snapshot has no usage profiles, and the consolidation
+works with the requests alone.
+
+| Flag | Default | Meaning |
+|---|---|---|
+| `--prometheus URL` | – | Base URL of the Prometheus HTTP API, e.g. `http://localhost:9090` (`kubectl port-forward`) |
+| `--usage-window W` | `7d` | Length of the history, e.g. `7d`, `24h`, `90m` (at least `5m`); requires `--prometheus` |
+
+For every container, the snapshot stores the 95th percentile of CPU usage and
+the maximum working-set memory over the window, assigned to its workload
+(Deployment, StatefulSet, DaemonSet, Job, or the ReplicaSet/Pod itself when
+nothing owns it) through `kube_pod_owner`. A workload gets the maximum over
+its pods. Prometheus must scrape cAdvisor (`container_*` metrics) and
+kube-state-metrics. A failed query fails the snapshot (exit code `2`).
+
+### Right-sizing
+
+`drainsim consolidate --right-size` needs a snapshot with usage profiles. It
+runs the consolidation twice from the same state: with the current requests,
+and with requests set to the 95th percentile of CPU and the maximum memory
+plus `rightSizing.memoryMargin` (default `0.15`, the default margin of KRR). Requests
+are at least `1m` and `1Mi`, never above the container's limit, and
+containers without usage data keep theirs. The report lists every
+recommendation and compares the removable nodes and the lower bound of both
+runs; the savings are those after right-sizing.
 
 Exit codes: `0` success, `1` the analysed change would fail, `2` usage or input error.
 
 ## Guarantees
 
-- **Read-only.** Only `get`/`list` on the Kubernetes API. Nothing is ever created, updated, deleted, evicted or bound in a real cluster.
+- **Read-only.** Only `get`/`list` on the Kubernetes API (see `test/rbac/readonly.yaml`). Nothing is ever created, updated, deleted, evicted or bound in a real cluster. Prometheus is only queried through `GET /api/v1/query`, so read access to its query API is enough; no Kubernetes permission is needed for it.
 - **Offline.** Only `snapshot` makes network calls; the analyses run from the snapshot file alone.
 - **Real scheduler.** Pod placement uses the upstream kube-scheduler framework plugins (PreFilter, Filter, PreScore, Score, NormalizeScore). Scheduling logic is not re-implemented.
 - **Deterministic.** The same snapshot and configuration always give the same result.
@@ -64,7 +113,7 @@ A drain step cordons the node and handles each pod:
 
 | Package | Component |
 |---|---|
-| `internal/cli` | Commands of the CLI (`snapshot`; `drain`, `consolidate`, `policy` planned) |
+| `internal/cli` | Commands of the CLI (`snapshot`, `drain`, `consolidate`, `policy`) |
 | `internal/reporter` | Reporter: exit codes |
 | `internal/collector` | Collector: reads a live cluster into a snapshot |
 | `internal/snapshot` | Snapshot artifact, stored as versioned JSON |
@@ -80,7 +129,7 @@ A drain step cordons the node and handles each pod:
 
 ## Test scenarios
 
-Each scenario from the Analysis chapter (4.1) has a reproducible kind cluster in `test/scenarios/<id>/`.
+Each scenario from the Analysis chapter (4.1) is to get a reproducible kind cluster in `test/scenarios/<id>/`. Implemented so far: `test/scenarios/basic` and `test/scenarios/f1`; the others are planned.
 
 | ID | Scenario |
 |---|---|
@@ -105,6 +154,10 @@ go test ./...
 Unit tests run against small snapshots in `test/testdata/` and need no cluster. Scenario tests use [kind](https://kind.sigs.k8s.io/) with a node image that matches the pinned `k8s.io/*` library version.
 
 Design decisions, library choices and deviations from the thesis are recorded in [`docs/decisions.md`](docs/decisions.md).
+
+## License
+
+drainsim is licensed under the [Apache License 2.0](LICENSE), the same license as Kubernetes.
 
 ## Out of scope
 

@@ -10,7 +10,7 @@ import (
 // Model creates replacements for evicted pods (component Replacement model,
 // Section 5.3, Factory Method pattern). It numbers the replacements it
 // creates, so new names are unique and the same simulation always produces
-// the same names (NFR7).
+// the same names (NFR6).
 type Model struct {
 	next int // number of the next replacement
 }

@@ -55,7 +55,7 @@ type Result struct {
 //     an event log attached, so the report shows only the final drain.
 //
 // The replay in step 3 gives the same result as the search, because the
-// simulation is deterministic (NFR7) and a checkpoint also restores the
+// simulation is deterministic (NFR6) and a checkpoint also restores the
 // names of replacements.
 func Run(ctx context.Context, sim engine.Simulation, nodes []string, strategy Strategy) (Result, error) {
 	res := Result{Nodes: nodes, Info: sim.Info()}

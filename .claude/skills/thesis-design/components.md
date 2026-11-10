@@ -7,7 +7,7 @@
 | Snapshot collector | `internal/collector` | – | 5.2 |
 | Snapshot / data model (Fig 5.2) | `internal/snapshot` | – | 5.2 |
 | Configuration | `internal/config` | – | 5.2, 5.5, 5.6 |
-| Simulation engine (ISimulation) | `internal/engine` | Facade | 5.3 |
+| Simulation facade (ISimulation, Fig 5.3) | `internal/engine` | Facade | 5.3 |
 | Snapshot loader | `internal/engine/loader` | – | 5.3 |
 | Cluster state | `internal/engine/state` | Memento | 5.3 |
 | Eviction rules | `internal/engine/eviction` | – | 5.3, 2.7 |
@@ -18,7 +18,7 @@
 | Event log | `internal/engine/eventlog` | Observer | 5.3 |
 | Drain order search (Q1) | `internal/analyses/drainorder` | Strategy | 5.4 |
 | Consolidation (Q2), ICostModel | `internal/analyses/consolidation` | Strategy | 5.5 |
-| Policy impact (Q3) | `internal/analyses/policyimpact` | – | 5.6 |
+| Policy impact (Q3, Fig 5.5) | `internal/analyses/policyimpact` | – | 5.6 |
 | Cost and CO₂ estimator | `internal/estimator` | – | 5.5 |
 
 ## One drain step (Figure 5.4)
@@ -47,14 +47,14 @@ refused pods left → drain fails
 - **5.3 Consolidation (Q2):** sort once by requests of all pods on the node;
   try each: save, drain, remove the node if the drain passes and all
   replacements are placed, else restore. Report a lower bound.
-- **5.4 Policy impact (Q3):** check running pods against targets; save; drain
+- **5.4 Policy impact (Q3, Figure 5.5):** check running pods against targets; save; drain
   with current levels; restore; drain with target levels; a step that passes
   before and fails after is the impact; report lost replicas and violations.
 
 ## Fixed interfaces (Go names, design names in brackets)
 
 `engine.Simulation` (ISimulation) · `engine.Placement` (IPlacement) ·
-`engine.PolicyChecker` (IPolicyChecker) · `consolidation.CostModel` (ICostModel) ·
+`engine.PolicyChecker` (IPolicyChecker, NFR17) · `consolidation.CostModel` (ICostModel, NFR18) ·
 `cli.Collector` (ICollector). An interface lives in the package that uses it.
 When `engine.Simulation` grows, update `fakeSim` in
 `internal/analyses/drainorder/drainorder_test.go`.

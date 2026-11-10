@@ -4,6 +4,7 @@ package collector
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"time"
 
 	"github.com/alfacentaur1/kubernetes-cluster-drainsim/internal/snapshot"
@@ -18,15 +19,18 @@ type Options struct {
 	Kubeconfig string
 	// KubeContext is the kubeconfig context to use. Empty uses the current one.
 	KubeContext string
-	// PrometheusURL is where to read cluster usage from. Empty means no usage data.
+	// PrometheusURL is the base URL of the Prometheus HTTP API to read the
+	// usage of the workloads from (FR20). Empty means no usage profiles.
 	PrometheusURL string
-	// UsageWindow is the length of the usage history to read.
+	// UsageWindow is the length of the usage history to read. Zero means
+	// DefaultUsageWindow.
 	UsageWindow time.Duration
 }
 
 // KubernetesCollector reads the cluster state through the Kubernetes API.
 type KubernetesCollector struct {
 	client kubernetes.Interface // read-only access to the API server
+	prom   *promClient          // nil without Options.PrometheusURL
 	opts   Options
 }
 
@@ -61,11 +65,22 @@ func New(opts Options) (*KubernetesCollector, error) {
 // newWithClient returns a collector that reads from the given client.
 // New uses it with a real client, tests with a fake one.
 func newWithClient(client kubernetes.Interface, opts Options) *KubernetesCollector {
-	return &KubernetesCollector{client: client, opts: opts}
+	c := &KubernetesCollector{client: client, opts: opts}
+	if opts.PrometheusURL != "" {
+		// Queries over a week of history can take long; the context of
+		// Collect still cancels them on Ctrl+C.
+		c.prom = &promClient{baseURL: opts.PrometheusURL, http: &http.Client{Timeout: 5 * time.Minute}}
+	}
+	if c.opts.UsageWindow == 0 {
+		c.opts.UsageWindow = DefaultUsageWindow
+	}
+	return c
 }
 
 // Collect returns a complete snapshot of the cluster, or an error if any
-// API request fails. It never returns a partial snapshot.
+// API request fails. With a Prometheus URL it also reads the usage profiles
+// of the workloads (FR20); a failed Prometheus query is an error too. It
+// never returns a partial snapshot.
 func (c *KubernetesCollector) Collect(ctx context.Context) (*snapshot.Snapshot, error) {
 	version, err := c.client.Discovery().ServerVersion()
 	if err != nil {
@@ -133,6 +148,16 @@ func (c *KubernetesCollector) Collect(ctx context.Context) (*snapshot.Snapshot, 
 		return nil, fmt.Errorf("listing jobs: %w", err)
 	}
 	snap.Jobs = jobs.Items
+
+	if c.prom != nil {
+		// Evaluated at the time of the snapshot, so usage and objects
+		// describe the same moment.
+		profiles, err := collectUsage(ctx, c.prom, c.opts.UsageWindow, snap.CreatedAt, snap.ReplicaSets)
+		if err != nil {
+			return nil, err
+		}
+		snap.UsageProfiles = profiles
+	}
 	// Sanitize.
 	Sanitize(snap)
 	return snap, nil

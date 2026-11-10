@@ -88,7 +88,7 @@ func New(ctx context.Context) (*Adapter, error) {
 // Place chooses a node for the pod with the scheduler plugins: PreFilter,
 // Filter for each node in name order, PreScore and Score (incl.
 // NormalizeScore). A score tie goes to the lowest node name, so the result is
-// deterministic (NFR7). Place never changes the state; the caller binds the
+// deterministic (NFR6). Place never changes the state; the caller binds the
 // pod. An error means a plugin failed, not that the pod does not fit.
 func (a *Adapter) Place(ctx context.Context, pod *corev1.Pod, st *state.ClusterState) (Result, error) {
 	// The plugins read the current state through the lister.

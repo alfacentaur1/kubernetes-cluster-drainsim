@@ -1,6 +1,6 @@
 ---
 name: thesis-design
-description: The design of drainsim from Chapter 5 of the bachelor's thesis — requirements FR1–FR36 and NFR1–NFR22, components and patterns, the drain step of Figure 5.4 and Algorithms 5.1–5.4. Use whenever you implement, change, test or review behaviour of drainsim, or need to know which requirement, figure or section a piece of code belongs to.
+description: The design of drainsim from Chapter 5 of the bachelor's thesis — requirements FR1–FR36 and NFR1–NFR21, components and patterns, the drain step of Figure 5.4 and Algorithms 5.1–5.4. Use whenever you implement, change, test or review behaviour of drainsim, or need to know which requirement, figure or section a piece of code belongs to.
 user-invocable: false
 ---
 
@@ -26,12 +26,17 @@ Before changing behaviour:
   evict → replacement → PSA check → scheduler → bind, mark Ready, recover the
   budget. Deferred pods go to the next round; no progress fails the drain;
   refused pods fail the drain.
-- **NFR5:** reuse upstream Kubernetes code (scheduler framework, Pod Security
-  Admission, component-helpers, kubectl and Eviction API rules in their order).
-- **NFR7:** same input, same output. Sort everything; no map order; no
+- **NFR4:** the real scheduler code; likewise reuse other upstream Kubernetes
+  code (scheduler framework, Pod Security Admission, component-helpers, kubectl and Eviction API rules in their order).
+- **NFR6:** same input, same output. Sort everything; no map order; no
   randomness; no `time.Now()` in logic.
-- **NFR1–NFR4, NFR11:** read-only snapshot; simulations offline; nothing leaves
-  the machine.
+- **NFR1–NFR3, NFR10, NFR11:** read-only snapshot; simulations offline; nothing
+  leaves the machine; no secrets in the snapshot.
+
+## Figures
+
+Fig 5.1 components · Fig 5.2 data model · Fig 5.3 engine components (with the
+"Simulation facade") · Fig 5.4 one drain step · Fig 5.5 policy impact.
 
 ## Where the thesis lives
 

@@ -9,7 +9,7 @@ import (
 )
 
 // PolicyImpact is the part of a report that only the policy command has
-// (Section 5.6, Figure 5.6).
+// (Section 5.6, Figure 5.5).
 type PolicyImpact struct {
 	// Impact is the step that fails only with the target levels (S3).
 	Impact *policyimpact.Impact `json:"impact,omitempty"`

@@ -119,3 +119,95 @@ func TestSnapshotReturnsErrorsUnchanged(t *testing.T) {
 		})
 	}
 }
+
+// TestSnapshotUsageFlags checks that --prometheus and --usage-window reach
+// the collector (FR20) and that invalid values are rejected before the
+// cluster is read (exit code 2).
+func TestSnapshotUsageFlags(t *testing.T) {
+	tests := []struct {
+		name       string
+		args       []string
+		wantOpts   collector.Options
+		wantErr    string // empty means success
+		wantOutput string
+	}{
+		{
+			name:       "no prometheus",
+			args:       nil,
+			wantOpts:   collector.Options{},
+			wantOutput: "3 pods, 0 PDBs\n",
+		},
+		{
+			name:       "prometheus with the default window",
+			args:       []string{"--prometheus", "http://localhost:9090"},
+			wantOpts:   collector.Options{PrometheusURL: "http://localhost:9090", UsageWindow: 7 * 24 * time.Hour},
+			wantOutput: "0 PDBs, 1 usage profiles\n",
+		},
+		{
+			name:       "prometheus with a window",
+			args:       []string{"--prometheus", "https://prom.example:9090/", "--usage-window", "24h"},
+			wantOpts:   collector.Options{PrometheusURL: "https://prom.example:9090/", UsageWindow: 24 * time.Hour},
+			wantOutput: "1 usage profiles",
+		},
+		{
+			name:    "window without prometheus",
+			args:    []string{"--usage-window", "1d"},
+			wantErr: "--usage-window requires --prometheus",
+		},
+		{
+			name:    "invalid window",
+			args:    []string{"--prometheus", "http://localhost:9090", "--usage-window", "1w"},
+			wantErr: "invalid --usage-window",
+		},
+		{
+			name:    "URL without scheme",
+			args:    []string{"--prometheus", "localhost:9090"},
+			wantErr: "invalid --prometheus",
+		},
+		{
+			name:    "URL with another scheme",
+			args:    []string{"--prometheus", "ftp://localhost"},
+			wantErr: "invalid --prometheus",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var got *collector.Options
+			newCollector := func(opts collector.Options) (Collector, error) {
+				got = &opts
+				snap := validSnapshot()
+				if opts.PrometheusURL != "" {
+					snap.UsageProfiles = []snapshot.UsageProfile{{Namespace: "shop", Kind: "Deployment", Name: "web"}}
+				}
+				return fakeCollector{snap: snap}, nil
+			}
+
+			output := filepath.Join(t.TempDir(), "snapshot.json")
+			var out bytes.Buffer
+			cmd := NewRootCommand(Deps{NewCollector: newCollector})
+			cmd.SetOut(&out)
+			cmd.SetErr(&bytes.Buffer{})
+			cmd.SetArgs(append([]string{"snapshot", "-o", output}, tt.args...))
+			err := cmd.ExecuteContext(context.Background())
+
+			if tt.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+					t.Fatalf("error = %v, want substring %q", err, tt.wantErr)
+				}
+				if got != nil {
+					t.Errorf("collector was created despite invalid flags")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("snapshot command error = %v", err)
+			}
+			if got == nil || *got != tt.wantOpts {
+				t.Errorf("collector options = %+v, want %+v", got, tt.wantOpts)
+			}
+			if !strings.Contains(out.String(), tt.wantOutput) {
+				t.Errorf("output = %q, want substring %q", out.String(), tt.wantOutput)
+			}
+		})
+	}
+}

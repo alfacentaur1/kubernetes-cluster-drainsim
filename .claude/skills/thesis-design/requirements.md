@@ -30,7 +30,7 @@ Priority: M = must, S = should, C = could.
 ## Consolidation, FinOps, GreenOps (Q2)
 - **FR20** Read usage data (S, UC8): container CPU/memory history from Prometheus, assigned to workloads.
 - **FR21** Right-size CPU (S, UC9): 95th percentile of usage.
-- **FR22** Right-size memory (S, UC9): maximum usage plus a buffer.
+- **FR22** Right-size memory (S, UC9): maximum usage plus a margin (15 % by default).
 - **FR23** Re-simulate (S, UC9): with right-sized requests, show new node count.
 - **FR24** Find removable nodes (S, UC10): while all pods still run; report a lower bound.
 - **FR25** Verify removal (S, UC10): simulated as a drain (PDBs, order).
@@ -46,21 +46,25 @@ Priority: M = must, S = should, C = could.
 
 ## Output
 - **FR33** Text report (M). **FR34** JSON report (M, UC15).
-- **FR35** Exit codes (M, UC16): 0 success, non-zero failed check, separate code for errors.
+- **FR35** Exit codes (M, UC16): 0 success, 1 failed check, 2 error; `consolidate` never returns 1.
 - **FR36** Non-interactive mode (M, UC16).
 
 ## Non-functional
-- **NFR1** Read-only access (M). **NFR2** No cluster changes (M).
-- **NFR3** Offline simulation (M). **NFR4** No network during simulation (M).
-- **NFR5** Real scheduler (M): upstream kube-scheduler code.
-- **NFR6** Agreement with real drains (M): verified in RQ1 on kind.
-- **NFR7** Deterministic result (M). **NFR8** Versioned snapshot (S).
-- **NFR9** 100 nodes / 3,000 pods in under 60 s (S, to confirm). **NFR10** < 1 GB memory (C).
-- **NFR11** Data stays local (M). **NFR12** No secrets in snapshot (M).
-- **NFR13** Any conformant distribution (M). **NFR14** Supported versions documented (S).
-- **NFR15** Single binary (S). **NFR16** Plain explanations (S). **NFR17** Consistent CLI (S).
-- **NFR18** Pluggable policy checks (C). **NFR19** Pluggable cost data (C).
-- **NFR20** Test cluster per scenario (M). **NFR21** Automated tests (S). **NFR22** Open source (S).
+- **NFR1** Read-only access to the cluster (M). **NFR2** No changes to the cluster (M).
+- **NFR3** Offline simulation: no network during analysis (M).
+- **NFR4** Real scheduler code (M): upstream kube-scheduler framework and plugins.
+- **NFR5** Agreement with real drains (M): verified in RQ1 on kind.
+- **NFR6** Deterministic result (M): same input, same output; sorted lists, numbered replacement names.
+- **NFR7** Versioned snapshot (S).
+- **NFR8** Time (S): 100 nodes / 3,000 pods in under 60 s. **NFR9** Memory under 1 GB (C).
+- **NFR10** Data stays local (M). **NFR11** No secrets in the snapshot (M): no Secrets, ConfigMaps, env values, managedFields, last-applied annotations.
+- **NFR12** Only standard Kubernetes objects, any conformant distribution (M).
+- **NFR13** Supported version stated (S): built against Kubernetes 1.36.
+- **NFR14** Single binary for Linux and macOS (S). **NFR15** Plain explanations (S).
+- **NFR16** Consistent CLI (S): strict parsing of flags and configuration, typos are errors.
+- **NFR17** Policy checks behind an interface (C). **NFR18** Price and CO₂ sources behind an interface (C).
+- **NFR19** One test cluster per scenario (M). **NFR20** Automated tests on every change (S).
+- **NFR21** Open-source license (S).
 
 ## Scenarios referenced in code
 P1 budget blocks eviction · P2/P3 replacement fits nowhere · P4 order matters ·

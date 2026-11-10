@@ -27,6 +27,28 @@ type Consolidation struct {
 	Currency string `json:"currency,omitempty"`
 	// Hours is the period of the estimate (730 h = one month, FR27).
 	Hours float64 `json:"hours,omitempty"`
+	// RightSizing is present with --right-size. The fields above then
+	// describe the consolidation with the right-sized requests (FR23).
+	RightSizing *RightSizing `json:"rightSizing,omitempty"`
+}
+
+// RightSizing is the part of the consolidation report about right-sizing
+// (FR21–FR23, Section 5.5): the recommended requests and the consolidation
+// with the current requests, for comparison.
+type RightSizing struct {
+	// MemoryMargin is the fraction added to the memory maximum.
+	MemoryMargin    float64                        `json:"memoryMargin"`
+	Recommendations []consolidation.Recommendation `json:"recommendations"`
+	// Current is the consolidation with the requests of the snapshot.
+	Current Outcome `json:"current"`
+}
+
+// Outcome is a consolidation without its savings: what can be removed and
+// how many nodes are needed at least.
+type Outcome struct {
+	Removed    []string             `json:"removed"`
+	Kept       []consolidation.Kept `json:"kept"`
+	LowerBound int                  `json:"lowerBound"`
 }
 
 // Total is the sum of the known savings of the removed nodes. Nodes whose
@@ -46,8 +68,8 @@ type Total struct {
 // code is 0 (Section 5.7).
 func Consolidate(res consolidation.Result, currency string, hours float64, now time.Time) Report {
 	c := &Consolidation{
-		Removed:    res.Removed,
-		Kept:       res.Kept,
+		Removed:    nonNil(res.Removed),
+		Kept:       nonNil(res.Kept),
 		LowerBound: res.LowerBound,
 		Savings:    res.Savings,
 		Currency:   currency,
@@ -62,8 +84,8 @@ func Consolidate(res consolidation.Result, currency string, hours float64, now t
 		Passed:        true,
 		Summary:       consolidateSummary(len(res.Nodes), c),
 		Order:         res.Nodes,
-		Drained:       res.Removed,
-		Steps:         steps(res.Events),
+		Drained:       nonNil(res.Removed),
+		Steps:         nonNil(steps(res.Events)),
 		Snapshot:      snapshotInfo(res.Info, now),
 		Nodes:         res.Nodes,
 		Consolidation: c,
@@ -96,6 +118,43 @@ func total(savings []estimator.Saving) *Total {
 func consolidateSummary(nodes int, c *Consolidation) string {
 	s := fmt.Sprintf("%d of %d nodes can be removed while all pods still run; at least %s needed.",
 		len(c.Removed), nodes, plural(c.LowerBound, "node is", "nodes are"))
+	return s + savingsSentence(c)
+}
+
+// ConsolidateRightSized builds the report of "consolidate --right-size"
+// (FR23): before is the consolidation with the requests of the snapshot,
+// after the one with the right-sized requests recs. The savings, steps and
+// removable nodes of the report are those of after.
+func ConsolidateRightSized(before, after consolidation.Result, recs []consolidation.Recommendation,
+	margin float64, currency string, hours float64, now time.Time) Report {
+	r := Consolidate(after, currency, hours, now)
+	c := r.Consolidation
+	if recs == nil {
+		recs = []consolidation.Recommendation{}
+	}
+	c.RightSizing = &RightSizing{
+		MemoryMargin:    margin,
+		Recommendations: recs,
+		Current:         Outcome{Removed: nonNil(before.Removed), Kept: nonNil(before.Kept), LowerBound: before.LowerBound},
+	}
+	r.Summary = rightSizedSummary(len(after.Nodes), len(before.Removed), c)
+	return r
+}
+
+// rightSizedSummary compares the consolidation with the current and the
+// right-sized requests, e.g. "With the current requests 1 of 5 nodes can be
+// removed; with right-sized requests 3 (at least 2 nodes are needed).",
+// followed by the savings with the right-sized requests.
+func rightSizedSummary(nodes, removedBefore int, c *Consolidation) string {
+	s := fmt.Sprintf("With the current requests %d of %d nodes can be removed; with right-sized requests %d (at least %s needed).",
+		removedBefore, nodes, len(c.Removed), plural(c.LowerBound, "node is", "nodes are"))
+	return s + savingsSentence(c)
+}
+
+// savingsSentence describes the savings of the removed nodes, starting with
+// a space, or returns "" if no node is removed.
+func savingsSentence(c *Consolidation) string {
+	s := ""
 	if len(c.Removed) == 0 {
 		return s
 	}
@@ -146,4 +205,13 @@ func plural(n int, one, many string) string {
 		return fmt.Sprintf("%d %s", n, one)
 	}
 	return fmt.Sprintf("%d %s", n, many)
+}
+
+// nonNil returns s, or an empty slice if s is nil, so that the JSON report
+// has [] instead of null and tools such as jq can iterate over it.
+func nonNil[T any](s []T) []T {
+	if s == nil {
+		return []T{}
+	}
+	return s
 }

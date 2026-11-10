@@ -107,7 +107,7 @@ func TestFailureWithCurrentLevelsIsNoImpact(t *testing.T) {
 }
 
 // Running pods that violate the target level are grouped by the workload an
-// operator knows: the Deployment, not its ReplicaSet (FR30, S1, Figure 5.6).
+// operator knows: the Deployment, not its ReplicaSet (FR30, S1, Figure 5.5).
 func TestRunningViolationsGroupedByDeployment(t *testing.T) {
 	snap := &snapshot.Snapshot{
 		Nodes: []corev1.Node{node("node-a"), node("node-b")},

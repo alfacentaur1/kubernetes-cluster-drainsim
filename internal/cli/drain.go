@@ -134,7 +134,7 @@ func runDrain(cmd *cobra.Command, deps Deps, path string, opts *drainOptions) er
 
 // newStrategy returns the search strategy chosen by --strategy and
 // --max-attempts (Section 5.4). Greedy is the default, because it stays fast
-// on large clusters (NFR9); backtracking finds an order whenever one exists,
+// on large clusters (NFR8); backtracking finds an order whenever one exists,
 // and its number of attempts can be limited.
 func newStrategy(cmd *cobra.Command, opts *drainOptions) (drainorder.Strategy, error) {
 	if opts.maxAttempts < 0 {
@@ -143,7 +143,7 @@ func newStrategy(cmd *cobra.Command, opts *drainOptions) (drainorder.Strategy, e
 	switch opts.strategy {
 	case "greedy":
 		// Greedy needs at most n(n+1)/2 attempts, so a limit would be
-		// silently ignored; refuse it instead (NFR17).
+		// silently ignored; refuse it instead (NFR16).
 		if cmd.Flags().Changed("max-attempts") {
 			return nil, fmt.Errorf("--max-attempts applies only to --strategy backtracking")
 		}

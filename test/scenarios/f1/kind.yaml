@@ -1,0 +1,26 @@
+# Cluster of scenario F1 (right-sizing): one control plane and three workers.
+# Every worker reserves 14 of the 16 CPUs of the development machine for the
+# system, so each has 2 CPU allocatable, like a small cloud node, and the
+# requests of the workloads decide how many workers are needed. The control
+# plane keeps its full size: it runs the monitoring stack.
+# Node image as in test/scenarios/basic (kind v0.33.0 release notes).
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+nodes:
+  - role: control-plane
+    image: kindest/node:v1.36.4@sha256:099e049362a1526b2db71494e1947aae99bd16290d7c895f2b7ea312e3cbfaed
+  - role: worker
+    image: kindest/node:v1.36.4@sha256:099e049362a1526b2db71494e1947aae99bd16290d7c895f2b7ea312e3cbfaed
+    kubeadmConfigPatches: &reserve
+      - |
+        kind: JoinConfiguration
+        nodeRegistration:
+          kubeletExtraArgs:
+            - name: system-reserved
+              value: cpu=14
+  - role: worker
+    image: kindest/node:v1.36.4@sha256:099e049362a1526b2db71494e1947aae99bd16290d7c895f2b7ea312e3cbfaed
+    kubeadmConfigPatches: *reserve
+  - role: worker
+    image: kindest/node:v1.36.4@sha256:099e049362a1526b2db71494e1947aae99bd16290d7c895f2b7ea312e3cbfaed
+    kubeadmConfigPatches: *reserve

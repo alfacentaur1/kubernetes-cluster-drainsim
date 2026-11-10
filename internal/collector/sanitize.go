@@ -10,7 +10,7 @@ import (
 
 // Sanitize removes managed fields, last-applied-configuration annotations and
 // all literal env values from a snapshot, keeping data needed for drain
-// simulation (Section 5.2, NFR12). References to Secrets and ConfigMaps
+// simulation (Section 5.2, NFR11). References to Secrets and ConfigMaps
 // (ValueFrom) are kept, because they contain only names.
 func Sanitize(s *snapshot.Snapshot) {
 	if s == nil {
