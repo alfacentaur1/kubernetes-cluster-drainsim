@@ -60,4 +60,4 @@ Matches the thesis
 ```
 
 Keep it short. Quote the thesis section for every design finding. If you are
-not sure what the thesis says, say so instead of guessing.
+not sure what the thesis says, say so instead of guessing. Keep in mind, that the reviwer may not be tech person.
