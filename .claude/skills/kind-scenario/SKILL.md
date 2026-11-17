@@ -1,6 +1,6 @@
 ---
 name: kind-scenario
-description: Create or run a reproducible scenario test on a local kind cluster that compares drainsim with a real kubectl drain (NFR6, NFR20, RQ1). Use when the user wants to test drainsim on a real cluster, reproduce a thesis scenario (P1–P10, S1–S3, F, G) or check agreement with real drains.
+description: Create or run a reproducible scenario test on a local kind cluster that compares drainsim with a real kubectl drain (NFR5, NFR19, RQ1). Use when the user wants to test drainsim on a real cluster, reproduce a thesis scenario (P1–P10, S1–S3, F, G) or check agreement with real drains.
 argument-hint: "[scenario id, e.g. p1 or s2] [create|run]"
 ---
 

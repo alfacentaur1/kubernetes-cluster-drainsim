@@ -34,7 +34,7 @@ Step to implement: $ARGUMENTS
 - GoDoc in English on every exported identifier, starting with its name and
   citing the component and section, e.g. `(component PDB model, Section 5.3, FR10)`.
   Every new package gets a `doc.go`.
-- Deterministic (NFR7): sort results; never rely on map order; no randomness;
+- Deterministic (NFR6): sort results; never rely on map order; no randomness;
   time comes from `cli.Deps.Now`.
 - Errors with `fmt.Errorf("…: %w", err)` from the standard library; a failed
   check is `*reporter.CheckFailedError` (exit 1), other errors exit 2.

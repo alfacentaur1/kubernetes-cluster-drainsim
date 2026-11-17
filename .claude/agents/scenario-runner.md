@@ -1,6 +1,6 @@
 ---
 name: scenario-runner
-description: Builds and runs drainsim scenario tests on local kind clusters and compares the simulation with real kubectl drains (NFR6, NFR20, RQ1). Use for any task that needs a real cluster; never for unit tests.
+description: Builds and runs drainsim scenario tests on local kind clusters and compares the simulation with real kubectl drains (NFR5, NFR19, RQ1). Use for any task that needs a real cluster; never for unit tests.
 tools: Read, Grep, Glob, Bash, Write, Edit
 model: inherit
 skills:

@@ -151,7 +151,7 @@ Each scenario from the Analysis chapter (4.1) is to get a reproducible kind clus
 go test ./...
 ```
 
-Unit tests run against small snapshots in `test/testdata/` and need no cluster. Scenario tests use [kind](https://kind.sigs.k8s.io/) with a node image that matches the pinned `k8s.io/*` library version.
+Unit tests build small cluster states in Go next to the code and need no cluster. Scenario tests in [`test/scenarios/`](test/scenarios/) use [kind](https://kind.sigs.k8s.io/) with a node image that matches the pinned `k8s.io/*` library version.
 
 Design decisions, library choices and deviations from the thesis are recorded in [`docs/decisions.md`](docs/decisions.md).
 

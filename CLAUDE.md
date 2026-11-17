@@ -19,10 +19,10 @@ snapshot; every other command works only on that file.
 ## The thesis is the specification
 
 - **Chapter 5 (Design) is the source of truth**: its text, the requirements
-  (FR1–FR36, NFR1–NFR17), the problems/scenarios (P1–P10, F1–, S1–S3), the use
+  (FR1–FR36, NFR1–NFR21), the problems/scenarios (P1–P10, F1–, S1–S3), the use
   cases (UC1–UC15), the algorithms (Alg. 5.1–5.4) and the diagrams
   (Fig 5.1 components, 5.2 data model, 5.3 engine components, 5.4 one drain
-  step, 5.6 policy impact).
+  step, 5.5 policy impact).
 - Implement exactly what the design says. Where the design is silent or the code
   must deviate, **add an entry to `docs/decisions.md`** (format below) and say so
   in your summary. Known deliberate deviations are already recorded there; read
@@ -114,7 +114,7 @@ Rules that keep the code aligned with the diagrams:
 - Events go to observers (`Attach`/`Detach`). Analyses attach their own
   `eventlog.Log`; events of undone attempts must not reach a report.
 - `engine.Checkpoint` = state Memento + replacement counter, so a restored run
-  repeats replacement names (needed by Fig 5.6).
+  repeats replacement names (needed by Fig 5.5).
 
 ## Go conventions
 
@@ -129,7 +129,7 @@ Rules that keep the code aligned with the diagrams:
   `// Evict checks … (component PDB model, Section 5.3, FR10).`
   Every package has a `doc.go` with
   `// Package x … (component …, Section …). Main type: …`.
-- **Determinism (NFR7)** is a hard requirement:
+- **Determinism (NFR6)** is a hard requirement:
     - never depend on map iteration order; sort every returned list
       (pods by namespace then name, nodes by name; candidates by CPU, memory, name);
     - no randomness; replacement names use a counter (`…-sim0`);
@@ -141,9 +141,9 @@ Rules that keep the code aligned with the diagrams:
   auto-imported kubeadm's errors package). A failed check (drain/policy) is
   `*reporter.CheckFailedError` → exit 1; any other error → exit 2; success → 0
   (Section 5.7, FR35).
-- **Offline (NFR3, NFR4)**: analyses and the engine make no network calls.
+- **Offline (NFR3)**: analyses and the engine make no network calls.
   Only `collector` talks to the Kubernetes API (and later Prometheus).
-- **Reuse upstream code instead of re-implementing it (NFR5)**: scheduler
+- **Reuse upstream code instead of re-implementing it (NFR4)**: scheduler
   plugins via the scheduler framework, Pod Security via
   `k8s.io/pod-security-admission`, pod requests via `k8s.io/component-helpers`.
   Rules copied from upstream (kubectl drain filters, Eviction API) keep their
@@ -214,7 +214,7 @@ Rules that keep the code aligned with the diagrams:
 | M5 drain order search: greedy, backtracking, `--strategy`, `--max-attempts` | done |
 | M6 policy impact: config, running-pod check, Alg. 5.4, `policy` command | done |
 | M7 consolidation (Alg. 5.3), lower bound, cost/CO₂ estimator, `consolidate` command, example configuration, usage profiles + Prometheus collector (FR20), right-sizing `--right-size` (FR21–FR23) | done |
-| M8 scenario clusters (kind) P1–S3, RQ1 comparison with real drains, benchmarks (NFR9), CI | started: `test/scenarios/basic` (PDB, two workers) and `test/scenarios/f1` (right-sizing with Prometheus) match real drains |
+| M8 scenario clusters (kind) P1–S3, RQ1 comparison with real drains, benchmarks (NFR8), CI | started: `test/scenarios/basic` (PDB, two workers) and `test/scenarios/f1` (right-sizing with Prometheus) match real drains |
 
 Next steps:
 1. M8: the remaining scenario clusters (P1–P10, F2–F3, S1–S3) and the RQ1

@@ -26,12 +26,12 @@ You never edit files; you report.
 5. Every choice the thesis leaves open has a decisions entry.
 
 **Correctness**
-6. Determinism (NFR7): no map iteration order in results, sorted outputs, no
+6. Determinism (NFR6): no map iteration order in results, sorted outputs, no
    randomness, no `time.Now()` outside `cli.Deps`.
 7. State isolation: deep copies into `ClusterState` and Mementos; facade
    returns copies; Restore can be repeated.
-8. Offline (NFR3, NFR4): no network outside `collector`; read-only (NFR1, NFR2).
-9. Upstream reuse (NFR5): no re-implementation of scheduler, Pod Security or
+8. Offline (NFR3): no network outside `collector`; read-only (NFR1, NFR2).
+9. Upstream reuse (NFR4): no re-implementation of scheduler, Pod Security or
    resource request logic.
 10. Errors wrap with `%w`; failed checks are `*reporter.CheckFailedError`;
     no imports from `k8s.io/kubernetes/cmd/...`.
