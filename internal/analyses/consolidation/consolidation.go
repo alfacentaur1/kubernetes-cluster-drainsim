@@ -41,6 +41,12 @@ type Result struct {
 	Info engine.Info
 }
 
+// controlPlaneLabel marks a control plane node; its value does not matter.
+const controlPlaneLabel = "node-role.kubernetes.io/control-plane"
+
+// controlPlaneReason is the reason of a control plane node in Result.Kept.
+const controlPlaneReason = "control plane node, never removed"
+
 // Kept is a node that cannot be removed.
 type Kept struct {
 	Node   string `json:"node"`
@@ -55,9 +61,17 @@ type Kept struct {
 // node stays. Removal is a
 // simulated drain, so PodDisruptionBudgets, placement rules and Pod Security
 // levels apply as in Q1 (FR25). If cost is not nil, the saving of every
-// removed node is estimated (FR26).
+// removed node is estimated (FR26). Control plane nodes are never tried,
+// see splitControlPlane.
 func Run(ctx context.Context, sim engine.Simulation, nodes []string, cost CostModel) (Result, error) {
+	// The lower bound is computed from all selected nodes, control plane
+	// included, as before.
 	res := Result{Info: sim.Info(), LowerBound: lowerBound(sim, nodes)}
+
+	nodes, controlPlane := splitControlPlane(sim, nodes)
+	for _, n := range controlPlane {
+		res.Kept = append(res.Kept, Kept{Node: n, Reason: controlPlaneReason})
+	}
 
 	// N sorted by the requests of its pods (ascending), once at the start.
 	// The requests change as pods move to the remaining nodes, but the order
@@ -88,6 +102,29 @@ func Run(ctx context.Context, sim engine.Simulation, nodes []string, cost CostMo
 		res.Events = append(res.Events, events...)
 	}
 	return res, nil
+}
+
+// splitControlPlane takes the control plane nodes (label
+// node-role.kubernetes.io/control-plane with any value) out of the
+// candidates, also when the user selected them with --nodes or --selector.
+// They are not drained at all. A control plane node usually runs only
+// static (mirror) pods and DaemonSet pods, which a drain skips, so its drain
+// would always seem to succeed and the consolidation would suggest removing
+// the control plane, although FR24 asks which nodes can be removed while the
+// cluster keeps working (Section 5.5). It returns the remaining candidates
+// in their original order and the control plane nodes sorted by name (NFR6).
+func splitControlPlane(sim engine.Simulation, nodes []string) (workers, controlPlane []string) {
+	for _, n := range nodes {
+		if node := sim.Node(n); node != nil {
+			if _, ok := node.Labels[controlPlaneLabel]; ok {
+				controlPlane = append(controlPlane, n)
+				continue
+			}
+		}
+		workers = append(workers, n)
+	}
+	slices.Sort(controlPlane)
+	return workers, controlPlane
 }
 
 // attempt simulates the drain of one node and keeps it only if all pods
