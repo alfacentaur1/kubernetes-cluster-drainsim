@@ -128,6 +128,70 @@ func TestSavingPerRemovedNode(t *testing.T) {
 	}
 }
 
+// A control plane node runs only a mirror pod and a DaemonSet pod, which a
+// drain skips, so its drain would succeed. It is kept without a drain and
+// is not a candidate, while the worker node-a next to it is still removed
+// because its pod fits on node-b (FR24, Section 5.5).
+func TestControlPlaneKeptWorkerRemoved(t *testing.T) {
+	snap := threeNodes()
+	snap.Nodes = append(snap.Nodes, controlPlane("cp", ""))
+	snap.Pods = append(snap.Pods, mirrorPod("cp", "etcd-cp"), daemonSetPod("cp", "kube-proxy"))
+
+	res := run(t, snap, nil)
+
+	if slices.Contains(res.Removed, "cp") {
+		t.Fatalf("Removed = %v, want the control plane node kept", res.Removed)
+	}
+	if want := []string{"node-a"}; !slices.Equal(res.Removed, want) {
+		t.Errorf("Removed = %v, want %v", res.Removed, want)
+	}
+	if slices.Contains(res.Nodes, "cp") {
+		t.Errorf("Nodes = %v, want the control plane node not tried", res.Nodes)
+	}
+	want := []Kept{
+		{Node: "cp", Reason: "control plane node, never removed"},
+		{Node: "node-b"}, {Node: "node-c"},
+	}
+	if len(res.Kept) != len(want) {
+		t.Fatalf("Kept = %+v, want cp, node-b and node-c", res.Kept)
+	}
+	for i, k := range res.Kept {
+		if k.Node != want[i].Node || (want[i].Reason != "" && k.Reason != want[i].Reason) {
+			t.Errorf("Kept[%d] = %+v, want %+v", i, k, want[i])
+		}
+	}
+	for _, ev := range res.Events {
+		if ev.Node == "cp" {
+			t.Errorf("Events contain %+v, want no drain of the control plane node", ev)
+		}
+	}
+}
+
+// The control plane node is kept also when it is the only candidate, e.g.
+// selected explicitly with --nodes; the label value does not matter.
+func TestControlPlaneOnlyCandidateKept(t *testing.T) {
+	snap := &snapshot.Snapshot{
+		Nodes: []corev1.Node{controlPlane("cp", "true")},
+		Pods:  []corev1.Pod{mirrorPod("cp", "etcd-cp"), daemonSetPod("cp", "kube-proxy")},
+	}
+
+	res := run(t, snap, nil)
+
+	if len(res.Removed) != 0 {
+		t.Errorf("Removed = %v, want none", res.Removed)
+	}
+	if len(res.Nodes) != 0 {
+		t.Errorf("Nodes = %v, want none tried", res.Nodes)
+	}
+	want := []Kept{{Node: "cp", Reason: "control plane node, never removed"}}
+	if !slices.Equal(res.Kept, want) {
+		t.Errorf("Kept = %+v, want %+v", res.Kept, want)
+	}
+	if len(res.Events) != 0 {
+		t.Errorf("Events = %+v, want none", res.Events)
+	}
+}
+
 // --- helpers ---
 
 // fakeCost is a CostModel that records the nodes it is asked about.
@@ -201,6 +265,38 @@ func node(name string) corev1.Node {
 			Labels: map[string]string{corev1.LabelHostname: name}},
 		Status: corev1.NodeStatus{Capacity: alloc, Allocatable: alloc},
 	}
+}
+
+// controlPlane returns a node with the control plane label (with the given
+// value) and the usual NoSchedule taint.
+func controlPlane(name, value string) corev1.Node {
+	n := node(name)
+	n.Labels["node-role.kubernetes.io/control-plane"] = value
+	n.Spec.Taints = []corev1.Taint{{Key: "node-role.kubernetes.io/control-plane", Effect: corev1.TaintEffectNoSchedule}}
+	return n
+}
+
+// mirrorPod returns a static pod as the API server shows it: a mirror pod
+// owned by the node.
+func mirrorPod(nodeName, name string) corev1.Pod {
+	p := pod(nodeName, name, "100m")
+	p.Name = name
+	p.GenerateName = ""
+	p.UID = types.UID("pod-" + name)
+	p.Annotations = map[string]string{corev1.MirrorPodAnnotationKey: "hash"}
+	p.OwnerReferences = []metav1.OwnerReference{{APIVersion: "v1", Kind: "Node", Name: nodeName,
+		UID: types.UID("node-" + nodeName), Controller: new(true)}}
+	return p
+}
+
+// daemonSetPod returns a pod of the DaemonSet ds on the node.
+func daemonSetPod(nodeName, ds string) corev1.Pod {
+	p := pod(nodeName, ds, "100m")
+	p.GenerateName = ds + "-"
+	p.Name = ds + "-aaaaa"
+	p.UID = types.UID("pod-" + p.Name)
+	p.OwnerReferences = []metav1.OwnerReference{*controller("DaemonSet", ds)}
+	return p
 }
 
 // pod returns a Ready pod of the ReplicaSet app-<rs> on the node, with the
