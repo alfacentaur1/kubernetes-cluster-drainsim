@@ -424,3 +424,23 @@ can be removed.
 right-sizing only the namespace of the scenario in the real cluster (the
 simulation also lowers kindnet on every worker, so the capacities would
 differ).
+
+## 2026-11-24 — Consolidation never removes control plane nodes
+
+**Decision:** Before Algorithm 5.3 sorts the candidates, the consolidation
+takes out every node with the label `node-role.kubernetes.io/control-plane`
+(any value), also when the user selects it with `--nodes` or `--selector`.
+These nodes are not drained and appear in `Kept` with the reason "control
+plane node, never removed". The remaining nodes are sorted once and tried as
+before; the lower bound is still computed from all selected nodes.
+
+**Reason:** A control plane node usually runs only static (mirror) pods and
+DaemonSet pods, which a drain skips (kubectl drain filters, Section 5.3), so
+its drain always seems to succeed and the tool would suggest removing the
+control plane. FR24 asks which nodes can be removed while the workloads keep
+running (Section 5.5); removing the control plane stops the whole cluster.
+
+**Alternatives:** Relying on the user's `--selector` to exclude the control
+plane (easy to forget, and the default selects all nodes); skipping every
+node with a taint (rejected: workers can have taints too, e.g. dedicated
+node pools, and they are valid candidates).
